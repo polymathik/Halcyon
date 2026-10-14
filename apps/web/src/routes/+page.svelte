@@ -1036,9 +1036,11 @@
 
 	<header class="hc-topbar top">
 		<span class="hc-brand">
-			<svg class="hc-brand__mark" viewBox="0 0 18 18" aria-hidden="true">
-				<rect width="18" height="18" rx="5" class="mark-tile" />
-				<path d="M5 11.6a4 4 0 0 1 8 0M3.8 11.6h10.4M6 14h6" class="mark-sun" />
+			<svg class="hc-brand__mark" viewBox="7 10.5 34 34" aria-hidden="true">
+				<path d="M10 25a14 14 0 0 1 28 0z" />
+				<rect x="10" y="28" width="28" height="4" rx="2" />
+				<rect x="13.5" y="34" width="21" height="4" rx="2" opacity="0.7" />
+				<rect x="18" y="40" width="12" height="4" rx="2" opacity="0.45" />
 			</svg>
 			Halcyon
 		</span>
@@ -1225,14 +1227,9 @@
 		inset: 0 0 auto 0;
 		z-index: var(--z-chrome);
 	}
-	.mark-tile {
+	/* Horizon mark: a low sun over three reflections that read as stacked session cards. */
+	.hc-brand__mark {
 		fill: var(--accent);
-	}
-	.mark-sun {
-		fill: none;
-		stroke: var(--on-accent);
-		stroke-width: 1.6;
-		stroke-linecap: round;
 	}
 	.workspace {
 		cursor: default;
