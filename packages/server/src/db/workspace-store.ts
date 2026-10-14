@@ -45,9 +45,14 @@ export class WorkspaceStore {
 			.all(workspaceId) as unknown as CardPlacement[];
 		const zones = (
 			this.db
-				.prepare('SELECT id, name, color, x, y, width, height FROM zones WHERE workspace_id = ? ORDER BY id')
+				.prepare(
+					'SELECT id, name, color, x, y, width, height, project_path AS projectPath FROM zones WHERE workspace_id = ? ORDER BY id'
+				)
 				.all(workspaceId) as unknown as Zone[]
 		).map((zone) => ({ ...zone, color: asZoneColor(zone.color) }));
+		const titles = this.db
+			.prepare('SELECT session_id AS sessionId, title FROM session_titles ORDER BY session_id')
+			.all() as unknown as { sessionId: SessionId; title: string }[];
 
 		return {
 			id: workspace.id,
@@ -56,6 +61,7 @@ export class WorkspaceStore {
 			placements,
 			zones,
 			...this.tagState(),
+			titles,
 			filter: workspace.filters_json ? (JSON.parse(workspace.filters_json) as SavedFilter) : null
 		};
 	}
@@ -106,20 +112,23 @@ export class WorkspaceStore {
 	// ---------- zones ----------
 
 	createZone(input: ZoneInput, workspaceId = DEFAULT_WORKSPACE): Zone {
+		const projectPath = input.projectPath ?? null;
 		const result = this.db
 			.prepare(
-				'INSERT INTO zones (workspace_id, name, color, x, y, width, height, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO zones (workspace_id, name, color, x, y, width, height, project_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			)
-			.run(workspaceId, input.name, input.color, input.x, input.y, input.width, input.height, new Date().toISOString());
-		return { id: Number(result.lastInsertRowid), ...input };
+			.run(workspaceId, input.name, input.color, input.x, input.y, input.width, input.height, projectPath, new Date().toISOString());
+		return { id: Number(result.lastInsertRowid), ...input, projectPath };
 	}
 
 	updateZone(id: number, changes: Partial<ZoneInput>, workspaceId = DEFAULT_WORKSPACE): Zone {
 		const zone = this.requireZone(id, workspaceId);
 		const next = { ...zone, ...changes };
 		this.db
-			.prepare('UPDATE zones SET name = ?, color = ?, x = ?, y = ?, width = ?, height = ? WHERE id = ? AND workspace_id = ?')
-			.run(next.name, next.color, next.x, next.y, next.width, next.height, id, workspaceId);
+			.prepare(
+				'UPDATE zones SET name = ?, color = ?, x = ?, y = ?, width = ?, height = ?, project_path = ? WHERE id = ? AND workspace_id = ?'
+			)
+			.run(next.name, next.color, next.x, next.y, next.width, next.height, next.projectPath ?? null, id, workspaceId);
 		return next;
 	}
 
@@ -149,6 +158,20 @@ export class WorkspaceStore {
 		return this.tagState();
 	}
 
+	/** Sets or clears (null) the display name a user gave a session in Halcyon. */
+	setSessionTitle(sessionId: SessionId, title: string | null): void {
+		if (title === null) {
+			this.db.prepare('DELETE FROM session_titles WHERE session_id = ?').run(sessionId);
+			return;
+		}
+		this.db
+			.prepare(
+				`INSERT INTO session_titles (session_id, title, updated_at) VALUES (?, ?, ?)
+				 ON CONFLICT (session_id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at`
+			)
+			.run(sessionId, title, new Date().toISOString());
+	}
+
 	private tagState(): TagsResponse {
 		const tags = this.db.prepare('SELECT id, name, color FROM tags ORDER BY name').all() as unknown as Tag[];
 		const sessionTags = this.db
@@ -159,7 +182,7 @@ export class WorkspaceStore {
 
 	private requireZone(id: number, workspaceId: string): Zone {
 		const zone = this.db
-			.prepare('SELECT id, name, color, x, y, width, height FROM zones WHERE id = ? AND workspace_id = ?')
+			.prepare('SELECT id, name, color, x, y, width, height, project_path AS projectPath FROM zones WHERE id = ? AND workspace_id = ?')
 			.get(id, workspaceId) as Zone | undefined;
 		if (!zone) throw new NotFoundError(`Zone ${id} not found`);
 		return { ...zone, color: asZoneColor(zone.color) };

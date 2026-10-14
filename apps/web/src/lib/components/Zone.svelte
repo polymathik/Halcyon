@@ -63,9 +63,14 @@
 		{/if}
 		<span class="hc-zone__count">{count}</span>
 	</div>
-	<button class="hc-iconbtn hc-zone__menu" data-action="delete-zone" aria-label={`Delete zone ${zone.name}`} title="Delete zone">
-		<Icon name="x" />
-	</button>
+	<div class="hc-zone__menu tools">
+		<button class="hc-iconbtn" data-action="rename-zone" aria-label={`Rename zone ${zone.name}`} title="Rename (or double-click the name)">
+			<Icon name="pencil" />
+		</button>
+		<button class="hc-iconbtn" data-action="delete-zone" aria-label={`Delete zone ${zone.name}`} title="Delete zone">
+			<Icon name="x" />
+		</button>
+	</div>
 	<div class="hc-zone__handle" title="Resize"></div>
 </div>
 
@@ -76,12 +81,20 @@
 		top: 0;
 		z-index: var(--z-zone);
 	}
-	.hc-zone__menu {
+	.tools {
 		position: absolute;
 		right: 6px;
 		top: 6px;
+		display: flex;
+		gap: 2px;
+	}
+	.tools .hc-iconbtn {
 		width: 24px;
 		height: 24px;
+	}
+	/* Height follows the cards; the handle sets width (columns). */
+	.hc-zone__handle {
+		cursor: ew-resize;
 	}
 	.hc-zone:focus-within .hc-zone__menu {
 		opacity: 1;

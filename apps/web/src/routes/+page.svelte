@@ -1,25 +1,36 @@
 <script lang="ts">
-	import { ZONE_COLORS, type ProviderStatus, type Session, type TagsResponse, type Zone, type ZoneInput } from '@halcyon/core';
+	import {
+		ZONE_COLORS,
+		type ProviderStatus,
+		type Session,
+		type TagsResponse,
+		type Zone,
+		type ZoneColor,
+		type ZoneInput
+	} from '@halcyon/core';
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '#lib/api.js';
+	import { bounds, CARD_HEIGHT, CARD_WIDTH, type Camera, type Point } from '#lib/canvas/geometry.js';
 	import {
-		CARD_HEIGHT,
-		CARD_HEIGHT_TAGGED,
-		CARD_WIDTH,
-		ZONE_LABEL_SPACE,
-		ZONE_PAD,
-		zoneGrid,
-		type Camera,
-		type Point
-	} from '#lib/canvas/geometry.js';
+		arrangeZone,
+		cardHeightFor,
+		columnsFor,
+		freeSpot,
+		packWidth,
+		projectZoneNames,
+		pushDown,
+		readingOrder,
+		shelfPack,
+		zoneWidthFor
+	} from '#lib/canvas/arrange.js';
 	import { placeNew } from '#lib/canvas/layout.js';
 	import Canvas from '#lib/components/Canvas.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import TagFilter from '#lib/components/TagFilter.svelte';
-	import { plural, providerMonogram } from '#lib/format.js';
+	import { displayTitle, plural, providerMonogram } from '#lib/format.js';
 	import { readPref, writePref } from '#lib/prefs.js';
 	import { currentTheme, setTheme, type Theme } from '#lib/theme.js';
 	import type { PageProps } from './$types';
@@ -103,6 +114,7 @@
 	const zoneOf = new SvelteMap<string, number | null>();
 	const zones = new SvelteMap<number, Zone>();
 	const tagsOf = new SvelteMap<string, string[]>();
+	const titlesOf = new SvelteMap<string, string>();
 	let initialCamera = $state<Camera | null>(null);
 	let workspaceReady = $state(false);
 	let workspaceError = $state(false);
@@ -126,6 +138,7 @@
 				zoneOf.set(p.sessionId, p.zoneId);
 			}
 			for (const z of workspace.zones) zones.set(z.id, z);
+			for (const t of workspace.titles) titlesOf.set(t.sessionId, t.title);
 			applyTags(workspace);
 			if (workspace.filter) {
 				filterTags = workspace.filter.tags;
@@ -142,49 +155,183 @@
 		void loadWorkspace();
 	});
 
-	// Sessions without a saved position are placed once, by project, below the
-	// existing layout, and saved, so later discoveries never move existing cards.
+	// ---------- layout engine ----------
+	// Zones are containers: their cards sit in a grid with no overlaps, the width
+	// sets the columns and the height always fits. When a zone grows, whatever
+	// it now overlaps is pushed down. Every change is collected and saved once.
+	interface Changes {
+		cards: Set<string>;
+		zones: Set<number>;
+	}
+	const newChanges = (): Changes => ({ cards: new Set(), zones: new Set() });
+	const presentIds = $derived(new Set<string>(sessions.map((s) => s.id)));
+	const cardH = (id: string) => cardHeightFor((tagsOf.get(id)?.length ?? 0) > 0);
+	const zoneBox = (z: Zone) => ({ x: z.x, y: z.y, w: z.width, h: z.height });
+	const projectKey = (s: Session) => s.projectRoot ?? s.projectPath ?? null;
+	const membersOf = (zoneId: number) => [...zoneOf].filter(([id, z]) => z === zoneId && presentIds.has(id)).map(([id]) => id);
+	const zoneName = (id: number | null) => (id === null ? null : (zones.get(id)?.name ?? null));
+	const zoneInput = (z: Zone): ZoneInput => ({
+		name: z.name,
+		color: z.color,
+		x: z.x,
+		y: z.y,
+		width: z.width,
+		height: z.height,
+		projectPath: z.projectPath
+	});
+
+	/** Re-lays out a zone's cards, optionally inserting one at a drop point, and fits the zone. */
+	function reflowZone(zoneId: number, changed: Changes, options: { insert?: { id: string; at: Point }; separate?: boolean } = {}) {
+		const zone = zones.get(zoneId);
+		if (!zone) return;
+		const cards = membersOf(zoneId).flatMap((id) => {
+			const p = options.insert?.id === id ? options.insert.at : positions.get(id);
+			return p ? [{ id, x: p.x, y: p.y }] : [];
+		});
+		const order = readingOrder(zoneBox(zone), cards);
+		const result = arrangeZone(zoneBox(zone), order.map((id) => ({ id, h: cardH(id) })));
+		for (const [id, p] of result.positions) {
+			const old = positions.get(id);
+			if (!old || old.x !== p.x || old.y !== p.y) {
+				positions.set(id, p);
+				changed.cards.add(id);
+			}
+		}
+		if (result.w !== zone.width || result.h !== zone.height) {
+			const grew = result.h > zone.height || result.w > zone.width;
+			zones.set(zoneId, { ...zone, width: result.w, height: result.h });
+			changed.zones.add(zoneId);
+			if (grew && options.separate !== false) separate(zoneId, changed);
+		}
+	}
+
+	/** Pushes zones and free cards that overlap this zone down below it. */
+	function separate(zoneId: number, changed: Changes) {
+		const zone = zones.get(zoneId);
+		if (!zone) return;
+		const obstacles = [
+			...[...zones.values()].filter((z) => z.id !== zoneId).map((z) => ({ id: `z:${z.id}`, ...zoneBox(z) })),
+			...sessions.flatMap((s) => {
+				const p = positions.get(s.id);
+				return p && (zoneOf.get(s.id) ?? null) === null ? [{ id: `c:${s.id}`, x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
+			})
+		];
+		for (const [key, dy] of pushDown({ id: `z:${zoneId}`, ...zoneBox(zone) }, obstacles)) {
+			if (key.startsWith('z:')) {
+				const id = Number(key.slice(2));
+				const z = zones.get(id);
+				if (!z) continue;
+				zones.set(id, { ...z, y: z.y + dy });
+				changed.zones.add(id);
+				for (const m of membersOf(id)) {
+					const p = positions.get(m);
+					if (p) {
+						positions.set(m, { x: p.x, y: p.y + dy });
+						changed.cards.add(m);
+					}
+				}
+			} else {
+				const id = key.slice(2);
+				const p = positions.get(id);
+				if (p) {
+					positions.set(id, { x: p.x, y: p.y + dy });
+					changed.cards.add(id);
+				}
+			}
+		}
+	}
+
+	function persist(changed: Changes) {
+		for (const id of changed.zones) {
+			const zone = zones.get(id);
+			if (zone) api.updateZone(id, { x: zone.x, y: zone.y, width: zone.width, height: zone.height }).catch(saveFailed);
+		}
+		const batch = [...changed.cards].flatMap((id) => {
+			const p = positions.get(id);
+			return p ? [{ sessionId: id as Session['id'], x: p.x, y: p.y, zoneId: zoneOf.get(id) ?? null }] : [];
+		});
+		if (batch.length) api.savePlacements(batch).catch(saveFailed);
+	}
+
+	/** Boxes of everything except the given card, for finding free space. */
+	function obstaclesExcept(id: string) {
+		return [
+			...[...zones.values()].map(zoneBox),
+			...sessions.flatMap((s) => {
+				const p = positions.get(s.id);
+				return p && s.id !== id ? [{ x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
+			})
+		];
+	}
+
+	// Sessions without a saved position: join their project's zone when there is
+	// one, otherwise are placed by project below the existing layout. Saved once,
+	// so later discoveries never move existing cards.
 	$effect(() => {
 		if (!workspaceReady) return;
 		const unplaced = sessions
 			.filter((s) => !positions.has(s.id))
 			.sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''));
 		if (unplaced.length === 0) return;
-		const existing = [
-			...[...positions.values()].map((p) => ({ ...p, w: CARD_WIDTH, h: CARD_HEIGHT })),
-			...[...zones.values()].map((z) => ({ x: z.x, y: z.y, w: z.width, h: z.height }))
-		];
-		const placed = placeNew(
-			unplaced.map((s) => ({ id: s.id, group: s.projectPath ?? '' })),
-			existing
-		);
-		const batch: { sessionId: Session['id']; x: number; y: number }[] = [];
-		for (const s of unplaced) {
-			const p = placed.get(s.id);
-			if (!p) continue;
-			positions.set(s.id, p);
-			batch.push({ sessionId: s.id, ...p });
+		const changed = newChanges();
+		const projectZones = new Map([...zones.values()].filter((z) => z.projectPath).map((z) => [z.projectPath!, z]));
+		const loose: Session[] = [];
+		const joined = new Set<number>();
+		unplaced.forEach((s, i) => {
+			const zone = projectZones.get(projectKey(s) ?? '');
+			if (!zone) return loose.push(s);
+			positions.set(s.id, { x: zone.x + zone.width, y: zone.y + zone.height + 10_000 + i });
+			zoneOf.set(s.id, zone.id);
+			changed.cards.add(s.id);
+			joined.add(zone.id);
+		});
+		for (const id of joined) reflowZone(id, changed);
+		if (loose.length) {
+			const existing = [
+				...[...positions.values()].map((p) => ({ ...p, w: CARD_WIDTH, h: CARD_HEIGHT })),
+				...[...zones.values()].map(zoneBox)
+			].filter((b) => b.y < 5_000_000);
+			const placed = placeNew(
+				loose.map((s) => ({ id: s.id, group: projectKey(s) ?? '' })),
+				existing
+			);
+			for (const s of loose) {
+				const p = placed.get(s.id);
+				if (!p) continue;
+				positions.set(s.id, p);
+				changed.cards.add(s.id);
+			}
 		}
-		api.savePlacements(batch).catch(saveFailed);
+		persist(changed);
 	});
 
 	// ---------- filter ----------
 	let filterTags = $state<string[]>([]);
 	let filterMode = $state<'highlight' | 'only'>('highlight');
+	let filterText = $state('');
 	let tagFilter = $state<TagFilter>();
-	const presentIds = $derived(new Set<string>(sessions.map((s) => s.id)));
 	const tagCounts = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const [id, list] of tagsOf) if (presentIds.has(id)) for (const t of list) counts.set(t, (counts.get(t) ?? 0) + 1);
 		return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 	});
+	const nameOf = (s: Session) => titlesOf.get(s.id) ?? displayTitle(s);
 	const filterView = $derived.by(() => {
-		if (filterTags.length === 0) return null;
+		const text = filterText.trim().replace(/^#/, '').toLowerCase();
+		if (filterTags.length === 0 && !text) return null;
 		const matches = new Set<string>();
-		for (const s of sessions) if ((tagsOf.get(s.id) ?? []).some((t) => filterTags.includes(t))) matches.add(s.id);
+		for (const s of sessions) {
+			const tags = tagsOf.get(s.id) ?? [];
+			if (filterTags.length && !tags.some((t) => filterTags.includes(t))) continue;
+			if (text) {
+				const haystack = [nameOf(s), s.title ?? '', s.projectPath ?? '', s.latestPath ?? '', ...tags].join(' ').toLowerCase();
+				if (!haystack.includes(text)) continue;
+			}
+			matches.add(s.id);
+		}
 		return { tags: filterTags, mode: filterMode, matches };
 	});
-	// The filter is saved with the workspace.
+	// Tag filters are saved with the workspace; search text is not.
 	$effect(() => {
 		const saved = filterTags.length ? { tags: [...filterTags], mode: filterMode } : null;
 		if (!workspaceReady) return;
@@ -193,28 +340,34 @@
 	});
 
 	// ---------- layout changes from the canvas ----------
-	const zoneName = (id: number | null) => (id === null ? null : (zones.get(id)?.name ?? null));
-	const zoneInput = (z: Zone): ZoneInput => ({ name: z.name, color: z.color, x: z.x, y: z.y, width: z.width, height: z.height });
-	const membersOf = (zoneId: number) => [...zoneOf].filter(([, z]) => z === zoneId).map(([id]) => id);
-
-	function moved(id: string, p: Point, zoneId: number | null, previous: number | null) {
+	function moved(id: string, drop: Point, zoneId: number | null, previous: number | null) {
+		const changed = newChanges();
+		changed.cards.add(id);
 		zoneOf.set(id, zoneId);
-		api.savePlacements([{ sessionId: id as Session['id'], x: p.x, y: p.y, zoneId }]).catch(saveFailed);
+		if (zoneId !== null) {
+			reflowZone(zoneId, changed, { insert: { id, at: drop } });
+		} else {
+			// Open canvas: nudge into the nearest free space so cards never overlap.
+			positions.set(id, freeSpot({ ...drop, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+		}
+		if (previous !== null && previous !== zoneId) reflowZone(previous, changed);
+		persist(changed);
 		if (zoneId !== previous) showToast(zoneId !== null ? `Moved to ${zoneName(zoneId)}` : 'Removed from zone');
 	}
 
-	function zoneChanged(zoneId: number, movedMembers: boolean) {
-		const zone = zones.get(zoneId);
-		if (!zone) return;
-		const { name: _name, color: _color, ...geometry } = zoneInput(zone);
-		api.updateZone(zoneId, geometry).catch(saveFailed);
-		if (movedMembers) {
-			const batch = membersOf(zoneId).flatMap((id) => {
-				const p = positions.get(id);
-				return p ? [{ sessionId: id as Session['id'], x: p.x, y: p.y }] : [];
-			});
-			if (batch.length) api.savePlacements(batch).catch(saveFailed);
-		}
+	/** End of a zone move or resize: save it and its cards, and clear any overlaps. */
+	function zoneChanged(zoneId: number) {
+		const changed = newChanges();
+		changed.zones.add(zoneId);
+		for (const id of membersOf(zoneId)) changed.cards.add(id);
+		reflowZone(zoneId, changed, { separate: false });
+		separate(zoneId, changed);
+		persist(changed);
+	}
+
+	/** Live re-layout while a zone is resized (saved when the resize ends). */
+	function zoneReflow(zoneId: number) {
+		reflowZone(zoneId, newChanges(), { separate: false });
 	}
 
 	let renamingZone = $state<number | null>(null);
@@ -233,11 +386,12 @@
 			color: ZONE_COLORS[zones.size % ZONE_COLORS.length]!,
 			x: Math.round(centre.x - 160),
 			y: Math.round(centre.y - 100),
-			width: 320,
+			width: zoneWidthFor(2),
 			height: 200
 		};
+		const spot = freeSpot({ x: input.x, y: input.y, w: input.width, h: input.height }, obstaclesExcept(''));
 		try {
-			const zone = await api.createZone(input);
+			const zone = await api.createZone({ ...input, x: Math.round(spot.x), y: Math.round(spot.y) });
 			zones.set(zone.id, zone);
 			renamingZone = zone.id;
 		} catch {
@@ -248,7 +402,7 @@
 	function deleteZone(zoneId: number) {
 		const zone = zones.get(zoneId);
 		if (!zone) return;
-		const members = membersOf(zoneId);
+		const members = [...zoneOf].filter(([, z]) => z === zoneId).map(([id]) => id);
 		zones.delete(zoneId);
 		for (const id of members) zoneOf.set(id, null);
 		api.deleteZone(zoneId).catch(saveFailed);
@@ -265,71 +419,175 @@
 		});
 	}
 
-	/** Move a session into a zone's next free grid slot, or out to the zone's right. */
+	/** Sidebar zone picker: append to a zone, or step out beside it. */
 	function moveToZone(id: string, zoneId: number | null) {
 		const previous = zoneOf.get(id) ?? null;
 		const p = positions.get(id);
 		if (!p || zoneId === previous) return;
-		let next: Point = p;
+		const changed = newChanges();
+		changed.cards.add(id);
+		zoneOf.set(id, zoneId);
 		if (zoneId !== null) {
 			const zone = zones.get(zoneId);
 			if (!zone) return;
-			const index = membersOf(zoneId).length;
-			const cols = Math.max(1, Math.floor((zone.width - ZONE_PAD) / (CARD_WIDTH + ZONE_PAD)));
-			next = {
-				x: zone.x + ZONE_PAD + (index % cols) * (CARD_WIDTH + ZONE_PAD),
-				y: zone.y + ZONE_LABEL_SPACE + Math.floor(index / cols) * (CARD_HEIGHT_TAGGED + ZONE_PAD)
-			};
-			const needed = next.y + CARD_HEIGHT_TAGGED + ZONE_PAD - zone.y;
-			if (needed > zone.height) {
-				zones.set(zoneId, { ...zone, height: needed });
-				api.updateZone(zoneId, { height: needed }).catch(saveFailed);
-			}
-		} else if (previous !== null) {
-			const zone = zones.get(previous);
-			if (zone) next = { x: zone.x + zone.width + 24, y: p.y };
+			reflowZone(zoneId, changed, { insert: { id, at: { x: zone.x + zone.width, y: zone.y + zone.height + 10_000 } } });
+		} else {
+			const from = previous !== null ? zones.get(previous) : undefined;
+			const near = from ? { x: from.x + from.width + 24, y: p.y } : p;
+			positions.set(id, freeSpot({ ...near, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
 		}
-		positions.set(id, next);
-		zoneOf.set(id, zoneId);
-		api.savePlacements([{ sessionId: id as Session['id'], ...next, zoneId }]).catch(saveFailed);
+		if (previous !== null) reflowZone(previous, changed);
+		persist(changed);
 		canvas?.focusOn(id);
 		showToast(zoneId !== null ? `Moved to ${zoneName(zoneId)}` : 'Removed from zone');
 	}
 
+	/** Snapshot for Undo of multi-card changes. */
+	function snapshot(ids: string[], zoneIds: number[]) {
+		return {
+			cards: ids.map((id) => ({ id, p: { ...positions.get(id)! }, zone: zoneOf.get(id) ?? null })),
+			zones: zoneIds.flatMap((id) => (zones.has(id) ? [{ ...zones.get(id)! }] : []))
+		};
+	}
+	async function restore(snap: ReturnType<typeof snapshot>, createdZones: number[]) {
+		for (const id of createdZones) zones.delete(id);
+		for (const z of snap.zones) zones.set(z.id, z);
+		for (const c of snap.cards) {
+			positions.set(c.id, c.p);
+			zoneOf.set(c.id, c.zone);
+		}
+		await api.savePlacements(snap.cards.map((c) => ({ sessionId: c.id as Session['id'], ...c.p, zoneId: c.zone })));
+		for (const z of snap.zones) await api.updateZone(z.id, { x: z.x, y: z.y, width: z.width, height: z.height });
+		for (const id of createdZones) await api.deleteZone(id);
+		canvas?.fitAll();
+	}
+
+	/** Creates zones (sized to fit) for groups of cards, packed below the existing layout. */
+	async function createZonesFor(plan: { name: string; projectPath: string | null; ids: string[]; color: ZoneColor }[], changed: Changes) {
+		const sizes = plan.map((p) => {
+			const width = zoneWidthFor(columnsFor(p.ids.length));
+			return { w: width, h: arrangeZone({ x: 0, y: 0, w: width, h: 0 }, p.ids.map((id) => ({ id, h: cardH(id) }))).h };
+		});
+		const moving = new Set(plan.flatMap((p) => p.ids));
+		const staying = [
+			...[...zones.values()].map(zoneBox),
+			...sessions.flatMap((s) => {
+				const p = positions.get(s.id);
+				return p && !moving.has(s.id) ? [{ x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
+			})
+		];
+		const movingBoxes = [...moving].flatMap((id) => {
+			const p = positions.get(id);
+			return p ? [{ x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(id) }] : [];
+		});
+		const area = bounds(staying);
+		const origin = area ? { x: Math.round(area.x), y: Math.round(area.y + area.h + 96) } : (bounds(movingBoxes) ?? { x: 0, y: 0 });
+		const points = shelfPack(sizes, origin, packWidth(sizes));
+		const created: number[] = [];
+		for (const [i, p] of plan.entries()) {
+			const zone = await api.createZone({
+				name: p.name,
+				color: p.color,
+				x: Math.round(points[i]!.x),
+				y: Math.round(points[i]!.y),
+				width: sizes[i]!.w,
+				height: sizes[i]!.h,
+				projectPath: p.projectPath
+			});
+			zones.set(zone.id, zone);
+			created.push(zone.id);
+			p.ids.forEach((id, k) => {
+				zoneOf.set(id, zone.id);
+				positions.set(id, { x: zone.x + k, y: zone.y + 10_000 + k });
+			});
+			reflowZone(zone.id, changed, { separate: false });
+			for (const id of p.ids) changed.cards.add(id);
+		}
+		return created;
+	}
+
 	async function zoneFromFilter() {
 		const view = filterView;
-		if (!view || !canvas) return;
+		if (!view || !canvas || view.tags.length === 0) return;
 		const hits = sessions.filter((s) => view.matches.has(s.id) && positions.has(s.id)).map((s) => s.id);
-		if (hits.length === 0) {
-			showToast('No sessions match this filter');
-			return;
-		}
-		const before = hits.map((id) => ({ id, p: { ...positions.get(id)! }, zone: zoneOf.get(id) ?? null }));
-		const area = canvas.contentBounds() ?? { x: 0, y: 0, w: 0, h: 0 };
-		const origin = { x: Math.round(area.x + area.w + 80), y: Math.round(area.y) };
-		const grid = zoneGrid(origin, hits.length, Math.min(3, Math.ceil(Math.sqrt(hits.length))));
+		if (hits.length === 0) return showToast('No sessions match this filter');
+		const previousZones = [...new Set(hits.map((id) => zoneOf.get(id)).filter((z): z is number => z != null))];
+		const snap = snapshot(hits, previousZones);
 		const name = view.tags.map((t) => `#${t}`).join(' + ').slice(0, 80);
+		const changed = newChanges();
 		try {
-			const zone = await api.createZone({ name, color: 'iris', x: origin.x, y: origin.y, width: grid.w, height: grid.h });
-			zones.set(zone.id, zone);
-			const batch = hits.map((id, i) => {
-				const slot = grid.slots[i]!;
-				positions.set(id, slot);
-				zoneOf.set(id, zone.id);
-				return { sessionId: id as Session['id'], ...slot, zoneId: zone.id };
-			});
-			await api.savePlacements(batch);
-			canvas.fitBox({ x: zone.x, y: zone.y, w: zone.width, h: zone.height });
-			showToast(`Moved ${plural(hits.length, 'session')} into ${name}`, async () => {
-				for (const b of before) {
-					positions.set(b.id, b.p);
-					zoneOf.set(b.id, b.zone);
-				}
-				zones.delete(zone.id);
-				await api.savePlacements(before.map((b) => ({ sessionId: b.id as Session['id'], ...b.p, zoneId: b.zone })));
-				await api.deleteZone(zone.id);
-				canvas?.fitAll();
-			});
+			const created = await createZonesFor([{ name, projectPath: null, ids: hits, color: 'iris' }], changed);
+			for (const z of previousZones) reflowZone(z, changed);
+			persist(changed);
+			const zone = zones.get(created[0]!);
+			if (zone) canvas.fitBox(zoneBox(zone));
+			showToast(`Moved ${plural(hits.length, 'session')} into ${name}`, () => restore(snap, created));
+		} catch {
+			saveFailed();
+		}
+	}
+
+	/**
+	 * One zone per project (git repository root when found) for every session
+	 * not already in a zone. Projects with a single session share an "Other
+	 * folders" zone. Sessions whose project already has a zone join it. New
+	 * sessions keep flowing into their project's zone afterwards.
+	 */
+	async function groupByProject() {
+		menuOpen = false;
+		if (!canvas) return;
+		const free = sessions
+			.filter((s) => positions.has(s.id) && (zoneOf.get(s.id) ?? null) === null)
+			.sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''));
+		if (free.length === 0) return showToast('Every session is already in a zone');
+		const projectZones = new Map([...zones.values()].filter((z) => z.projectPath).map((z) => [z.projectPath!, z.id]));
+		const groups = new Map<string, string[]>();
+		const others: string[] = [];
+		const joining = new Map<number, string[]>();
+		for (const s of free) {
+			const key = projectKey(s);
+			const existing = key ? projectZones.get(key) : undefined;
+			if (existing !== undefined) joining.set(existing, [...(joining.get(existing) ?? []), s.id]);
+			else if (key) groups.set(key, [...(groups.get(key) ?? []), s.id]);
+			else others.push(s.id);
+		}
+		for (const [key, ids] of [...groups]) {
+			if (ids.length < 2) {
+				others.push(...ids);
+				groups.delete(key);
+			}
+		}
+		const names = projectZoneNames([...groups.keys()]);
+		const plan: { name: string; projectPath: string | null; ids: string[]; color: ZoneColor }[] = [...groups].map(([key, ids], i) => ({
+			name: names.get(key) ?? key,
+			projectPath: key,
+			ids,
+			color: ZONE_COLORS[(zones.size + i) % ZONE_COLORS.length]!
+		}));
+		if (others.length) plan.push({ name: 'Other folders', projectPath: null, ids: others, color: 'slate' });
+
+		const snap = snapshot(
+			free.map((s) => s.id),
+			[...joining.keys()]
+		);
+		const changed = newChanges();
+		try {
+			const created = await createZonesFor(plan, changed);
+			for (const [zoneId, ids] of joining) {
+				const zone = zones.get(zoneId)!;
+				ids.forEach((id, k) => {
+					zoneOf.set(id, zoneId);
+					positions.set(id, { x: zone.x + zone.width + k, y: zone.y + zone.height + 10_000 + k });
+					changed.cards.add(id);
+				});
+				reflowZone(zoneId, changed);
+			}
+			persist(changed);
+			canvas.fitAll();
+			dismissBanner();
+			showToast(`Grouped ${plural(free.length, 'session')} into ${plural(created.length + joining.size, 'zone')}`, () =>
+				restore(snap, created)
+			);
 		} catch {
 			saveFailed();
 		}
@@ -340,10 +598,38 @@
 		tagsOf.set(id, [...tags].sort());
 		try {
 			applyTags(await api.setTags(id, tags));
+			// Tags change a card's height; keep its zone tidy.
+			const zoneId = zoneOf.get(id) ?? null;
+			if (zoneId !== null && (previous.length === 0) !== (tags.length === 0)) {
+				const changed = newChanges();
+				reflowZone(zoneId, changed);
+				persist(changed);
+			}
 		} catch (error) {
 			tagsOf.set(id, previous);
 			showToast(error instanceof Error ? error.message : "Couldn't save tags");
 		}
+	}
+
+	// ---------- session names ----------
+	let renamingSession = $state<string | null>(null);
+	/** Saves a Halcyon display name; empty or the original name resets it. */
+	function renameSession(id: string, title: string | null) {
+		renamingSession = null;
+		if (title === null) return;
+		const session = sessions.find((s) => s.id === id);
+		const next = title.trim().slice(0, 120);
+		const original = session ? displayTitle(session) : '';
+		const previous = titlesOf.get(id) ?? null;
+		const value = next === '' || next === original ? null : next;
+		if (value === previous) return;
+		if (value === null) titlesOf.delete(id);
+		else titlesOf.set(id, value);
+		api.setTitle(id, value).catch(() => {
+			if (previous === null) titlesOf.delete(id);
+			else titlesOf.set(id, previous);
+			saveFailed();
+		});
 	}
 
 	function cameraChanged(c: Camera) {
@@ -353,10 +639,13 @@
 	}
 
 	function escape() {
-		if (renamingZone !== null) return;
+		if (renamingZone !== null || renamingSession !== null) return;
 		if (menuOpen) menuOpen = false;
 		else if (selectedId) selectedId = null;
-		else if (filterTags.length) filterTags = [];
+		else if (filterTags.length || filterText) {
+			filterTags = [];
+			filterText = '';
+		}
 	}
 
 	// ---------- selection ----------
@@ -435,6 +724,8 @@
 			{zones}
 			{zoneOf}
 			{tagsOf}
+			{titlesOf}
+			{renamingSession}
 			filter={filterView}
 			{selectedId}
 			{renamingZone}
@@ -445,6 +736,12 @@
 			{gridOn}
 			onselect={(id) => (selectedId = id)}
 			onmoved={moved}
+			onzonereflow={zoneReflow}
+			onrenamesessionstart={(id) => {
+				selectedId = id;
+				renamingSession = id;
+			}}
+			onrenamesession={renameSession}
 			onzonechanged={zoneChanged}
 			onzonerename={zoneRename}
 			onzonerenamestart={(id) => (renamingZone = id)}
@@ -470,7 +767,10 @@
 				{/each}
 				{#if !bannerDismissed}
 					<div class="hc-float hc-banner">
-						<span><b>Found {plural(agentsFound, 'agent')} · {plural(sessions.length, 'session')}.</b> <span class="muted">Drag cards into zones to organize.</span></span>
+						<span><b>Found {plural(agentsFound, 'agent')} · {plural(sessions.length, 'session')}.</b> <span class="muted">Group them by project, or drag cards into zones.</span></span>
+						{#if zones.size === 0}
+							<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={groupByProject}><Icon name="group" size={13} />Group by project</button>
+						{/if}
 						<button class="hc-iconbtn small" onclick={dismissBanner} aria-label="Dismiss" title="Dismiss"><Icon name="x" /></button>
 					</div>
 				{/if}
@@ -495,6 +795,7 @@
 				tags={filterTags}
 				counts={tagCounts}
 				mode={filterMode}
+				bind:text={filterText}
 				canCreateZone={!!filterView && filterView.matches.size > 0}
 				onchange={(tags) => (filterTags = tags)}
 				onmode={(mode) => (filterMode = mode)}
@@ -541,6 +842,10 @@
 
 	{#if menuOpen}
 		<div class="hc-pop menu" role="menu">
+			<button class="hc-pop__row" role="menuitem" onclick={groupByProject}>
+				<Icon name="group" />Group by project <span class="n">zones per repo</span>
+			</button>
+			<div class="divider"></div>
 			<button
 				class="hc-pop__row"
 				role="menuitemcheckbox"
@@ -575,6 +880,7 @@
 				<span><kbd class="hc-kbd">←↑→↓</kbd> next card</span>
 				<span><kbd class="hc-kbd">/</kbd> filter</span>
 				<span><kbd class="hc-kbd">N</kbd> new zone</span>
+				<span>Double-click a card or zone name to rename</span>
 			</div>
 		</div>
 	{/if}
@@ -584,6 +890,8 @@
 			<Sidebar
 				session={selected}
 				{now}
+				name={titlesOf.get(selected.id) ?? null}
+				onrename={(title) => renameSession(selected.id, title)}
 				tags={tagsOf.get(selected.id) ?? []}
 				zones={[...zones.values()]}
 				zoneId={zoneOf.get(selected.id) ?? null}
@@ -688,6 +996,14 @@
 	}
 	.keys span {
 		white-space: nowrap;
+	}
+	.keys span:last-child {
+		grid-column: 1 / -1;
+	}
+	.menu .divider {
+		height: 1px;
+		background: var(--border);
+		margin: 4px;
 	}
 
 	.banners {

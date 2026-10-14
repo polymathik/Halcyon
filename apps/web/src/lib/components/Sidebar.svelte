@@ -7,6 +7,8 @@
 	let {
 		session,
 		now,
+		name = null,
+		onrename,
 		tags,
 		zones,
 		zoneId,
@@ -17,6 +19,10 @@
 	}: {
 		session: Session;
 		now: number;
+		/** Display name given in Halcyon, if any. */
+		name?: string | null;
+		/** New name, empty string to reset, or null to cancel. */
+		onrename: (title: string | null) => void;
 		tags: string[];
 		zones: Zone[];
 		zoneId: number | null;
@@ -122,7 +128,27 @@
 		return () => controller.abort();
 	});
 
-	const title = $derived(displayTitle(session));
+	const original = $derived(displayTitle(session));
+	const title = $derived(name ?? original);
+
+	let editing = $state(false);
+	let nameInput = $state<HTMLInputElement>();
+	$effect(() => {
+		if (editing && nameInput) {
+			nameInput.focus();
+			nameInput.select();
+		}
+	});
+	// Close the editor when another session is selected.
+	$effect(() => {
+		void session.id;
+		editing = false;
+	});
+	function finishName(value: string | null) {
+		if (!editing) return;
+		editing = false;
+		onrename(value);
+	}
 	const assistantLabel = $derived(providerLabel(session.provider));
 </script>
 
@@ -130,7 +156,29 @@
 	<div class="hc-sidebar__head">
 		<span class="hc-pmark hc-pmark--lg" data-p={session.provider} title={providerLabel(session.provider)}>{providerMonogram(session.provider)}</span>
 		<div class="head-text">
-			<h2 class="hc-sidebar__title" class:untitled={!session.title}>{title}</h2>
+			{#if editing}
+				<input
+					bind:this={nameInput}
+					class="name-input"
+					value={title}
+					maxlength="120"
+					aria-label="Session name"
+					onkeydown={(e) => {
+						if (e.key === 'Enter') finishName(e.currentTarget.value);
+						if (e.key === 'Escape') {
+							e.stopPropagation();
+							finishName(null);
+						}
+					}}
+					onblur={(e) => finishName(e.currentTarget.value)}
+				/>
+			{:else}
+				<h2 class="hc-sidebar__title" class:untitled={!name && !session.title}>
+					<button class="title-btn" onclick={() => (editing = true)} title="Rename (Halcyon only)">
+						{title}<span class="pencil" aria-hidden="true"><Icon name="pencil" size={13} /></span>
+					</button>
+				</h2>
+			{/if}
 			<div class="hc-sidebar__sub">
 				<span class="hc-mono sub-path" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? 'Unknown folder'}</span>
 			</div>
@@ -142,6 +190,10 @@
 		<section>
 			<h3 class="hc-sec__label">Details</h3>
 			<dl class="hc-meta">
+				{#if name}
+					<dt>Original name</dt>
+					<dd title={original}>{original} · <button class="link" onclick={() => onrename('')}>Reset</button></dd>
+				{/if}
 				<dt>Agent</dt>
 				<dd>{providerLabel(session.provider)}</dd>
 				<dt>Last activity</dt>
@@ -263,6 +315,47 @@
 	}
 	.hc-sidebar__title.untitled {
 		color: var(--ink-muted);
+	}
+	.title-btn {
+		all: unset;
+		cursor: text;
+		border-radius: 4px;
+	}
+	.title-btn:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+	.pencil {
+		display: inline-flex;
+		margin-left: 6px;
+		vertical-align: -1px;
+		color: var(--ink-subtle);
+		opacity: 0;
+		transition: opacity var(--dur-fast);
+	}
+	.title-btn:hover .pencil,
+	.title-btn:focus-visible .pencil {
+		opacity: 1;
+	}
+	.name-input {
+		width: 100%;
+		font: 600 15px/22px var(--font-sans);
+		color: var(--ink);
+		background: var(--surface);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius-md);
+		padding: 0 6px;
+		outline: 0;
+		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.link {
+		all: unset;
+		color: var(--accent-ink);
+		cursor: pointer;
+		font-weight: 500;
+	}
+	.link:hover {
+		text-decoration: underline;
 	}
 	.sub-path {
 		color: var(--ink-muted);

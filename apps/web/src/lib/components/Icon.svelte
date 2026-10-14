@@ -8,6 +8,8 @@
 		search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>',
 		play: '<path d="M5 3.5v9l7.5-4.5z" fill="currentColor"/>',
 		folder: '<path d="M2 4.5C2 3.7 2.7 3 3.5 3h2.8l1.5 1.5h4.7c.8 0 1.5.7 1.5 1.5v5.5c0 .8-.7 1.5-1.5 1.5h-9c-.8 0-1.5-.7-1.5-1.5z"/>',
+		pencil: '<path d="M10.5 3.5 12.5 5.5M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9z"/>',
+		group: '<rect x="2" y="2.5" width="5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="5" height="4.5" rx="1.2"/><rect x="2" y="9" width="12" height="4.5" rx="1.2"/>',
 		check: '<path d="M3.5 8.5 6.5 11.5 12.5 4.5"/>',
 		fit: '<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>',
 		moon: '<path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1z"/>',

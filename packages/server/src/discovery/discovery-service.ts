@@ -8,6 +8,7 @@ import type {
 	SessionsResponse
 } from '@halcyon/core';
 import type { SessionCacheStore } from '../db/session-cache.js';
+import { ProjectRootResolver } from './project-root.js';
 
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
 const PREVIEW_TIMEOUT_MS = 10_000;
@@ -35,6 +36,7 @@ export class DiscoveryService {
 	private snapshot: SessionsResponse | null = null;
 	private snapshotAt = 0;
 	private inflight: Promise<SessionsResponse> | null = null;
+	private readonly roots = new ProjectRootResolver();
 
 	constructor(
 		private readonly adapters: ProviderAdapter[],
@@ -104,7 +106,10 @@ export class DiscoveryService {
 
 	private async scanAll(): Promise<SessionsResponse> {
 		const outcomes = await Promise.all(this.adapters.map((adapter) => this.scanOne(adapter)));
-		const sessions = dedupe(outcomes.flatMap((outcome) => outcome.sessions));
+		const sessions = dedupe(outcomes.flatMap((outcome) => outcome.sessions)).map((session) => ({
+			...session,
+			projectRoot: this.roots.resolve(session.projectPath)
+		}));
 		this.snapshot = { sessions, providers: outcomes.map((outcome) => outcome.status) };
 		this.snapshotAt = Date.now();
 		return this.snapshot;

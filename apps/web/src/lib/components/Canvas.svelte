@@ -12,9 +12,7 @@
 		fitCamera,
 		gridPitch,
 		lodScale,
-		minZoneSize,
 		nearestInDirection,
-		snapIntoZone,
 		toWorld,
 		zoomAt,
 		type Box,
@@ -22,6 +20,7 @@
 		type Direction,
 		type Point
 	} from '#lib/canvas/geometry.js';
+	import { zoneWidthFor } from '#lib/canvas/arrange.js';
 	import Icon from './Icon.svelte';
 	import Minimap from './Minimap.svelte';
 	import SessionCard from './SessionCard.svelte';
@@ -40,6 +39,9 @@
 		zones: SvelteMap<number, ZoneModel>;
 		zoneOf: SvelteMap<string, number | null>;
 		tagsOf: SvelteMap<string, string[]>;
+		/** Display names given in Halcyon. */
+		titlesOf: SvelteMap<string, string>;
+		renamingSession: string | null;
 		filter: FilterView | null;
 		selectedId: string | null;
 		renamingZone: number | null;
@@ -49,8 +51,12 @@
 		scrollZooms: boolean;
 		gridOn: boolean;
 		onselect: (id: string | null) => void;
-		/** A card was dropped; `zoneId` is its new zone (null for open canvas). */
+		/** A card was dropped at `position`; `zoneId` is the zone under the pointer (null for open canvas). */
 		onmoved: (id: string, position: Point, zoneId: number | null, previousZone: number | null) => void;
+		/** A zone's width changed during a resize; the page re-lays out its cards. */
+		onzonereflow: (zoneId: number) => void;
+		onrenamesessionstart: (id: string) => void;
+		onrenamesession: (id: string, title: string | null) => void;
 		/** Zone geometry changed (moved with its members, resized, or grown by a drop). */
 		onzonechanged: (zoneId: number, movedMembers: boolean) => void;
 		onzonerename: (zoneId: number, name: string | null) => void;
@@ -67,6 +73,8 @@
 		zones,
 		zoneOf,
 		tagsOf,
+		titlesOf,
+		renamingSession,
 		filter,
 		selectedId,
 		renamingZone,
@@ -77,6 +85,9 @@
 		gridOn,
 		onselect,
 		onmoved,
+		onzonereflow,
+		onrenamesessionstart,
+		onrenamesession,
 		onzonechanged,
 		onzonerename,
 		onzonerenamestart,
@@ -313,10 +324,14 @@
 		const zoneEl = target.closest<HTMLElement>('.hc-zone');
 		const onLabel = !!target.closest('.hc-zone__label');
 		const onHandle = !!target.closest('.hc-zone__handle');
-		const onMenu = target.closest<HTMLElement>('[data-action="delete-zone"]');
+		const onMenu = target.closest<HTMLElement>('[data-action]');
 
 		if (onMenu && zoneEl && event.button === 0) {
-			onzonedelete(Number(zoneEl.dataset.zone));
+			// Keep focus where it lands (the rename field), not on the button.
+			event.preventDefault();
+			const id = Number(zoneEl.dataset.zone);
+			if (onMenu.dataset.action === 'delete-zone') onzonedelete(id);
+			else if (onMenu.dataset.action === 'rename-zone') onzonerenamestart(id);
 			return;
 		}
 		// Empty canvas or a zone body pans; so do the middle button and Space.
@@ -388,17 +403,25 @@
 		} else {
 			const zone = zones.get(action.id);
 			if (!zone) return;
-			const memberBoxes = members(action.id).flatMap((id) => {
-				const p = positions.get(id);
-				return p ? [{ ...p, w: CARD_WIDTH, h: cardHeight(id) }] : [];
-			});
-			const min = minZoneSize(zoneBox(zone), memberBoxes);
-			zones.set(action.id, {
-				...zone,
-				width: Math.round(Math.max(min.w, action.w + dx * k)),
-				height: Math.round(Math.max(min.h, action.h + dy * k))
-			});
+			// Width sets the columns; the page re-lays out the cards and fits the height.
+			const width = Math.round(Math.max(zoneWidthFor(1), action.w + dx * k));
+			if (width !== zone.width) {
+				zones.set(action.id, { ...zone, width });
+				onzonereflow(action.id);
+			}
 		}
+	}
+
+	// Double-clicks are detected here rather than with dblclick events: pointer
+	// capture retargets those to the canvas, so they never reach a zone label.
+	let lastTap: { key: string; t: number; x: number; y: number } | null = null;
+	function isDoubleTap(key: string, event: PointerEvent): boolean {
+		const now = performance.now();
+		const hit = !!lastTap && lastTap.key === key && now - lastTap.t < 400 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 6;
+		lastTap = hit ? null : { key, t: now, x: event.clientX, y: event.clientY };
+		// A double-click selects nearby text (e.g. in the sidebar); clear it.
+		if (hit) window.getSelection()?.removeAllRanges();
+		return hit;
 	}
 
 	function endPointer(event: PointerEvent) {
@@ -406,34 +429,30 @@
 		action = null;
 		panning = false;
 		if (!a) return;
+		const tap = event.type === 'pointerup' && !a.moved;
 		if (a.kind === 'pan') {
-			if (!a.moved && event.type === 'pointerup' && event.button !== 1) onselect(null);
+			if (tap && event.button !== 1) {
+				if (isDoubleTap('canvas', event)) glideTo(zoomAt(current(), 1.5, local(event)), 180);
+				else onselect(null);
+			}
 			return;
 		}
 		if (a.kind === 'zone' || a.kind === 'resize') {
-			if (a.moved) onzonechanged(a.id, a.kind === 'zone');
+			if (a.moved) onzonechanged(a.id, true);
+			else if (a.kind === 'zone' && tap && isDoubleTap(`zone:${a.id}`, event)) onzonerenamestart(a.id);
 			return;
 		}
 		dragId = null;
 		const target = dropZone;
 		dropZone = null;
 		if (!a.moved) {
-			select(a.id);
+			if (tap && isDoubleTap(`card:${a.id}`, event)) onrenamesessionstart(a.id);
+			else select(a.id);
 			return;
 		}
 		const p = positions.get(a.id);
 		if (!p) return;
-		const previous = zoneOf.get(a.id) ?? null;
-		const zone = target !== null ? zones.get(target) : undefined;
-		if (zone) {
-			const snapped = snapIntoZone({ ...p, w: CARD_WIDTH, h: cardHeight(a.id) }, zoneBox(zone));
-			positions.set(a.id, snapped.card);
-			if (snapped.zone.w !== zone.width || snapped.zone.h !== zone.height) {
-				zones.set(zone.id, { ...zone, width: snapped.zone.w, height: snapped.zone.h });
-				onzonechanged(zone.id, false);
-			}
-		}
-		onmoved(a.id, positions.get(a.id)!, zone?.id ?? null, previous);
+		onmoved(a.id, p, target, zoneOf.get(a.id) ?? null);
 	}
 
 	function select(id: string) {
@@ -448,17 +467,6 @@
 		const top = c.y + p.y * c.z;
 		const v = visibleArea(true);
 		if (right > v.x + v.w - 16 || left < v.x || top < v.y || bottom > v.y + v.h) focusOn(id);
-	}
-
-	function ondblclick(event: MouseEvent) {
-		const target = event.target as HTMLElement;
-		const label = target.closest('.hc-zone__label');
-		if (label) {
-			onzonerenamestart(Number(label.closest<HTMLElement>('.hc-zone')!.dataset.zone));
-			return;
-		}
-		if (target.closest('.hc-card, .chrome, .hc-zone__handle, button, input')) return;
-		glideTo(zoomAt(current(), 1.5, local(event)), 180);
 	}
 
 	// Wheel and Safari gesture listeners must be non-passive to stop page zoom.
@@ -600,7 +608,6 @@
 	{onpointermove}
 	onpointerup={endPointer}
 	onpointercancel={endPointer}
-	{ondblclick}
 >
 	<canvas class="grid" bind:this={gridEl} style:width="{vw}px" style:height="{vh}px" aria-hidden="true"></canvas>
 	<div class="world" style:transform="translate3d({cam.x}px, {cam.y}px, 0) scale({cam.z})" style:--lod={lod}>
@@ -616,6 +623,9 @@
 		{#each placed as item (item.session.id)}
 			<SessionCard
 				session={item.session}
+				title={titlesOf.get(item.session.id) ?? null}
+				renaming={renamingSession === item.session.id}
+				onrename={(title) => onrenamesession(item.session.id, title)}
 				x={item.x}
 				y={item.y}
 				{now}

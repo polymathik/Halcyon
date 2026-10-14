@@ -26,7 +26,7 @@ function insertZone(db: ReturnType<typeof memoryDb>, workspaceId: string): numbe
 describe('schema', () => {
 	it('creates the default workspace and is idempotent', () => {
 		const db = memoryDb();
-		expect(migrate(db)).toBe(1);
+		expect(migrate(db)).toBe(2);
 		expect(new WorkspaceStore(db).get()?.name).toBe('Default');
 	});
 

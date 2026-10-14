@@ -63,7 +63,11 @@ export interface ZoneInput {
 	y: number;
 	width: number;
 	height: number;
+	/** Project folder this zone collects; new sessions from it join automatically. */
+	projectPath?: string | null;
 }
+
+export const MAX_TITLE_LENGTH = 120;
 
 /** A filter saved with the workspace. Tags match any; names are normalized. */
 export interface SavedFilter {
@@ -109,6 +113,7 @@ export interface Zone {
 	y: number;
 	width: number;
 	height: number;
+	projectPath: string | null;
 }
 
 export interface Tag {
@@ -131,6 +136,8 @@ export interface WorkspaceResponse {
 	zones: Zone[];
 	tags: Tag[];
 	sessionTags: { sessionId: SessionId; tagId: number }[];
+	/** Display names the user gave sessions in Halcyon. */
+	titles: { sessionId: SessionId; title: string }[];
 	filter: SavedFilter | null;
 }
 

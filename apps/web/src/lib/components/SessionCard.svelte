@@ -4,6 +4,9 @@
 
 	let {
 		session,
+		title: customTitle = null,
+		renaming = false,
+		onrename = () => {},
 		x,
 		y,
 		now,
@@ -17,6 +20,11 @@
 		hidden = false
 	}: {
 		session: Session;
+		/** Display name given in Halcyon; overrides the provider title. */
+		title?: string | null;
+		renaming?: boolean;
+		/** New name, empty string to reset, or null to cancel. */
+		onrename?: (title: string | null) => void;
 		x: number;
 		y: number;
 		now: number;
@@ -30,7 +38,23 @@
 		hidden?: boolean;
 	} = $props();
 
-	const title = $derived(displayTitle(session));
+	const title = $derived(customTitle ?? displayTitle(session));
+	const named = $derived(!!customTitle || !!session.title);
+
+	let input = $state<HTMLInputElement>();
+	let done = false;
+	$effect(() => {
+		if (renaming && input) {
+			done = false;
+			input.focus();
+			input.select();
+		}
+	});
+	function finish(value: string | null) {
+		if (done) return;
+		done = true;
+		onrename(value);
+	}
 	const time = $derived(relativeTime(session.lastActivityAt, now));
 	const path = $derived(session.latestPath ?? session.projectPath);
 	// Tags matching the active filter come first so they are never hidden behind +N.
@@ -55,7 +79,23 @@
 	>
 		<div class="hc-card__head">
 			<span class="hc-pmark" data-p={session.provider} title={providerLabel(session.provider)}>{providerMonogram(session.provider)}</span>
-			<span class="hc-card__title" class:untitled={!session.title} title={title}>{title}</span>
+			{#if renaming}
+				<input
+					bind:this={input}
+					class="rename"
+					value={title}
+					maxlength="120"
+					aria-label="Session name"
+					onkeydown={(e) => {
+						e.stopPropagation();
+						if (e.key === 'Enter') finish(e.currentTarget.value);
+						if (e.key === 'Escape') finish(null);
+					}}
+					onblur={(e) => finish(e.currentTarget.value)}
+				/>
+			{:else}
+				<span class="hc-card__title" class:untitled={!named} title={`${title} · double-click to rename`}>{title}</span>
+			{/if}
 		</div>
 		<div class="hc-card__path" title={path ?? undefined}>{displayPath(path) ?? 'Unknown folder'}</div>
 		{#if !compact}
@@ -99,6 +139,18 @@
 		height: calc(var(--provider-mark) * var(--lod, 1));
 		font-size: calc(10px * var(--lod, 1));
 		border-radius: calc(var(--radius-sm) * var(--lod, 1));
+	}
+	.rename {
+		flex: 1;
+		min-width: 0;
+		font: 550 13px/18px var(--font-sans);
+		color: var(--ink);
+		background: var(--surface);
+		border: 0;
+		outline: 1.5px solid var(--accent);
+		outline-offset: 1px;
+		border-radius: 3px;
+		padding: 0 2px;
 	}
 	.hc-card__title.untitled {
 		color: var(--ink-muted);

@@ -5,6 +5,7 @@
 		tags,
 		counts,
 		mode,
+		text = $bindable(''),
 		canCreateZone,
 		onchange,
 		onmode,
@@ -16,6 +17,8 @@
 		/** All tags in use, with session counts, most used first. */
 		counts: [string, number][];
 		mode: 'highlight' | 'only';
+		/** Free text matched against names, folders and tags. */
+		text?: string;
 		canCreateZone: boolean;
 		onchange: (tags: string[]) => void;
 		onmode: (mode: 'highlight' | 'only') => void;
@@ -25,7 +28,8 @@
 	} = $props();
 
 	let input = $state<HTMLInputElement>();
-	let query = $state('');
+	// The typed text both suggests tags and filters by name/folder.
+	const query = $derived(text);
 	let open = $state(false);
 	let active = $state(0);
 
@@ -42,7 +46,7 @@
 	}
 	function add(tag: string) {
 		if (!tags.includes(tag)) onchange([...tags, tag]);
-		query = '';
+		text = '';
 		active = 0;
 	}
 	function onkeydown(event: KeyboardEvent) {
@@ -60,8 +64,8 @@
 			onchange(tags.slice(0, -1));
 		} else if (event.key === 'Escape') {
 			event.stopPropagation();
-			if (tags.length || query) {
-				query = '';
+			if (tags.length || text) {
+				text = '';
 				onchange([]);
 			}
 			input?.blur();
@@ -87,9 +91,9 @@
 		{/if}
 		<input
 			bind:this={input}
-			bind:value={query}
-			placeholder={tags.length ? '' : 'Filter by tag'}
-			aria-label="Filter by tag"
+			bind:value={text}
+			placeholder={tags.length ? '' : 'Filter by tag, name or folder'}
+			aria-label="Filter by tag, name or folder"
 			autocomplete="off"
 			role="combobox"
 			aria-expanded={open}
@@ -99,12 +103,20 @@
 			oninput={() => (active = 0)}
 			{onkeydown}
 		/>
-		{#if tags.length}
+		{#if tags.length || text.trim()}
 			<div class="hc-seg" role="group" aria-label="Filter mode">
 				<button aria-pressed={mode === 'highlight'} onclick={() => onmode('highlight')}>Highlight</button>
 				<button aria-pressed={mode === 'only'} onclick={() => onmode('only')}>Only</button>
 			</div>
-			<button class="hc-iconbtn clear" onclick={() => onchange([])} aria-label="Clear filter" title="Clear filter (Esc)">
+			<button
+				class="hc-iconbtn clear"
+				onclick={() => {
+					text = '';
+					onchange([]);
+				}}
+				aria-label="Clear filter"
+				title="Clear filter (Esc)"
+			>
 				<Icon name="x" />
 			</button>
 		{/if}
@@ -130,7 +142,9 @@
 					</div>
 				{/each}
 			{:else}
-				<div class="hc-pop__row quiet">{counts.length ? 'No more tags' : 'No tags yet. Add them in a session’s details.'}</div>
+				<div class="hc-pop__row quiet">
+					{text.trim() ? 'Showing sessions whose name or folder matches' : counts.length ? 'No more tags' : 'No tags yet. Add them in a session’s details.'}
+				</div>
 			{/if}
 			{#if tags.length && canCreateZone}
 				<div class="divider"></div>

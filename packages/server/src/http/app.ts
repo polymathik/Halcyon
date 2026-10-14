@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
 	MAX_TAGS_PER_SESSION,
+	MAX_TITLE_LENGTH,
 	normalizeTag,
 	parseSessionId,
 	ZONE_COLORS,
@@ -142,6 +143,22 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		return c.json(workspaces.setSessionTags(parsed.id, names));
 	});
 
+	api.put('/sessions/:sessionId/title', async (c) => {
+		const parsed = parseSessionId(c.req.param('sessionId'));
+		if (!parsed) return c.json<ApiError>({ error: 'Invalid session ID' }, 400);
+		const body = await readJson(c);
+		const raw = body?.title;
+		if (raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+			workspaces.setSessionTitle(parsed.id, null);
+			return c.body(null, 204);
+		}
+		if (typeof raw !== 'string' || raw.trim().length > MAX_TITLE_LENGTH || /[\u0000-\u001f]/.test(raw)) {
+			return c.json<ApiError>({ error: `Expected a title of at most ${MAX_TITLE_LENGTH} characters, or null` }, 400);
+		}
+		workspaces.setSessionTitle(parsed.id, raw.trim());
+		return c.body(null, 204);
+	});
+
 	// ---------- workspace ----------
 	api.get('/workspace', (c) => {
 		const workspace = workspaces.get();
@@ -272,6 +289,11 @@ function parseZone(body: Record<string, unknown> | null, partial: boolean): Part
 			if (!isCoordinate(body[key])) return null;
 			out[key] = body[key];
 		}
+	}
+	if (has('projectPath')) {
+		const value = body.projectPath;
+		if (value !== null && (typeof value !== 'string' || value.length === 0 || value.length > 4096)) return null;
+		out.projectPath = value as string | null;
 	}
 	for (const key of ['width', 'height'] as const) {
 		if (has(key) || !partial) {

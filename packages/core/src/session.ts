@@ -35,6 +35,12 @@ export interface Session {
 	projectPath: string | null;
 	/** Latest recorded working directory, when it differs from `projectPath`. */
 	latestPath: string | null;
+	/**
+	 * The enclosing git repository root of `projectPath`, when one is found,
+	 * otherwise `projectPath`. Set by discovery, not by adapters; used to group
+	 * sessions by project.
+	 */
+	projectRoot?: string | null;
 
 	/** ISO 8601 timestamps. */
 	startedAt: string | null;
