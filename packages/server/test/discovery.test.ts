@@ -97,3 +97,27 @@ describe('discovery', () => {
 		expect(scans).toBe(1);
 	});
 });
+
+describe('snapshot freshness', () => {
+	it('serves a stale snapshot immediately and rescans in the background', async () => {
+		let scans = 0;
+		const counted = adapter({
+			provider: 'claude',
+			scan: async () => {
+				scans++;
+				return { sessions: [], warnings: [], parsedCount: 0 };
+			}
+		});
+		const discovery = service([counted]);
+		const first = await discovery.current(60_000);
+		expect(scans).toBe(1);
+
+		expect(await discovery.current(60_000)).toBe(first);
+		expect(scans).toBe(1);
+
+		const stale = await discovery.current(-1);
+		expect(stale).toBe(first);
+		await discovery.refresh(); // joins the background scan
+		expect(scans).toBe(2);
+	});
+});

@@ -1,6 +1,8 @@
 import type { ProviderAdapter } from '@halcyon/core';
+import { createClaudeAdapter } from './claude/claude-adapter.js';
+import { createCodexAdapter } from './codex/codex-adapter.js';
 
-/** Real provider adapters, in display order. Filled in by Phase 2. */
+/** Real provider adapters, in display order. */
 export function defaultAdapters(): ProviderAdapter[] {
-	return [];
+	return [createClaudeAdapter(), createCodexAdapter()];
 }

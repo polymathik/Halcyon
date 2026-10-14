@@ -21,6 +21,7 @@ interface ProviderOutcome {
  */
 export class DiscoveryService {
 	private snapshot: SessionsResponse | null = null;
+	private snapshotAt = 0;
 	private inflight: Promise<SessionsResponse> | null = null;
 
 	constructor(
@@ -29,9 +30,16 @@ export class DiscoveryService {
 		private readonly options: { scanTimeoutMs?: number } = {}
 	) {}
 
-	/** Returns the latest snapshot, scanning first if none exists yet. */
-	async current(): Promise<SessionsResponse> {
-		return this.snapshot ?? this.refresh();
+	/**
+	 * Returns the latest snapshot, scanning first if none exists yet. When the
+	 * snapshot is older than `maxAgeMs`, it is returned immediately and a
+	 * background rescan starts (stale-while-revalidate). Unchanged transcripts
+	 * cost only a stat, so frequent polling stays cheap.
+	 */
+	async current(maxAgeMs = Number.POSITIVE_INFINITY): Promise<SessionsResponse> {
+		if (!this.snapshot) return this.refresh();
+		if (Date.now() - this.snapshotAt > maxAgeMs) void this.refresh();
+		return this.snapshot;
 	}
 
 	/** Rescans all providers; concurrent callers share one scan. */
@@ -46,6 +54,7 @@ export class DiscoveryService {
 		const outcomes = await Promise.all(this.adapters.map((adapter) => this.scanOne(adapter)));
 		const sessions = dedupe(outcomes.flatMap((outcome) => outcome.sessions));
 		this.snapshot = { sessions, providers: outcomes.map((outcome) => outcome.status) };
+		this.snapshotAt = Date.now();
 		return this.snapshot;
 	}
 

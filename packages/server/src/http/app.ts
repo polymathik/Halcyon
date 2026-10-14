@@ -6,6 +6,9 @@ import { Hono, type Context } from 'hono';
 import type { WorkspaceStore } from '../db/workspace-store.js';
 import type { DiscoveryService } from '../discovery/discovery-service.js';
 
+/** Older snapshots are served immediately while a background rescan runs. */
+const SNAPSHOT_MAX_AGE_MS = 10_000;
+
 export interface AppOptions {
 	discovery: DiscoveryService;
 	workspaces: WorkspaceStore;
@@ -42,7 +45,7 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot }: AppO
 
 	const api = new Hono();
 	api.get('/health', (c) => c.json({ ok: true }));
-	api.get('/sessions', async (c) => c.json(await discovery.current()));
+	api.get('/sessions', async (c) => c.json(await discovery.current(SNAPSHOT_MAX_AGE_MS)));
 	api.post('/sessions/refresh', async (c) => c.json(await discovery.refresh()));
 	api.get('/workspace', (c) => {
 		const workspace = workspaces.get();

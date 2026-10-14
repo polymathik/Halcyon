@@ -1,9 +1,25 @@
 <script lang="ts">
 	import type { ProviderStatus } from '@halcyon/core';
 	import { displayTitle, projectName, providerLabel, relativeTime } from '#lib/format.js';
+	import { invalidateAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	// Keep the index fresh while the tab is visible. The server answers from its
+	// snapshot and rescans in the background, so polling is cheap.
+	const POLL_MS = 15_000;
+	$effect(() => {
+		const tick = () => {
+			if (document.visibilityState === 'visible') void invalidateAll();
+		};
+		const timer = setInterval(tick, POLL_MS);
+		document.addEventListener('visibilitychange', tick);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', tick);
+		};
+	});
 
 	const sessions = $derived(
 		[...(data.sessions?.sessions ?? [])].sort((a, b) =>
