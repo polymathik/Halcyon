@@ -191,7 +191,7 @@
 		left: 0;
 		right: 0;
 		min-width: 240px;
-		z-index: var(--z-panel);
+		z-index: calc(var(--z-panel) + 10);
 	}
 	.quiet {
 		color: var(--ink-subtle);

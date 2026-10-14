@@ -9,6 +9,8 @@
 		now,
 		name = null,
 		onrename,
+		isArchived = false,
+		onarchive,
 		tags,
 		zones,
 		zoneId,
@@ -23,6 +25,8 @@
 		name?: string | null;
 		/** New name, empty string to reset, or null to cancel. */
 		onrename: (title: string | null) => void;
+		isArchived?: boolean;
+		onarchive: (archived: boolean) => void;
 		tags: string[];
 		zones: Zone[];
 		zoneId: number | null;
@@ -183,10 +187,25 @@
 				<span class="hc-mono sub-path" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? 'Unknown folder'}</span>
 			</div>
 		</div>
+		<button
+			class="hc-iconbtn"
+			onclick={() => onarchive(!isArchived)}
+			aria-label={isArchived ? 'Unarchive session' : 'Archive session'}
+			title={isArchived ? 'Unarchive' : 'Archive (hide from the canvas; files are kept)'}
+			aria-pressed={isArchived}
+		>
+			<Icon name="archive" />
+		</button>
 		<button class="hc-iconbtn" onclick={onclose} aria-label="Close details" title="Close (Esc)"><Icon name="x" /></button>
 	</div>
 
 	<div class="hc-sidebar__body">
+		{#if isArchived}
+			<div class="archived-note">
+				<span>Archived. It's hidden from the canvas; its transcript is untouched.</span>
+				<button class="hc-btn hc-btn--sm" onclick={() => onarchive(false)}>Unarchive</button>
+			</div>
+		{/if}
 		<section>
 			<h3 class="hc-sec__label">Details</h3>
 			<dl class="hc-meta">
@@ -347,6 +366,17 @@
 		padding: 0 6px;
 		outline: 0;
 		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.archived-note {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		justify-content: space-between;
+		padding: 8px 8px 8px 12px;
+		border-radius: var(--radius-lg);
+		background: var(--surface-sunken);
+		font: 450 12px/16px var(--font-sans);
+		color: var(--ink-muted);
 	}
 	.link {
 		all: unset;

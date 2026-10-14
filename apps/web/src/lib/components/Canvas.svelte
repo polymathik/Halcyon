@@ -37,6 +37,8 @@
 
 	interface Props {
 		sessions: Session[];
+		/** Archived sessions (drawn dimmed when shown). */
+		archived: Set<string>;
 		positions: SvelteMap<string, Point>;
 		zones: SvelteMap<number, ZoneModel>;
 		zoneOf: SvelteMap<string, number | null>;
@@ -78,6 +80,7 @@
 	}
 	let {
 		sessions,
+		archived,
 		positions,
 		zones,
 		zoneOf,
@@ -738,6 +741,7 @@
 				hidden={item.folded || (!!filter && !item.match && filter.mode === 'only' && item.session.id !== selectedId)}
 				selected={item.session.id === selectedId || multi.has(item.session.id)}
 				dragging={dragIds.has(item.session.id)}
+				isArchived={archived.has(item.session.id)}
 			/>
 		{/each}
 	</div>

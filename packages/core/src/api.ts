@@ -70,6 +70,7 @@ export interface ZoneInput {
 }
 
 export const MAX_TITLE_LENGTH = 120;
+export const MAX_ARCHIVE_BATCH = 2_000;
 
 /** A filter saved with the workspace. Tags match any; names are normalized. */
 export interface SavedFilter {
@@ -141,6 +142,8 @@ export interface WorkspaceResponse {
 	sessionTags: { sessionId: SessionId; tagId: number }[];
 	/** Display names the user gave sessions in Halcyon. */
 	titles: { sessionId: SessionId; title: string }[];
+	/** Sessions archived in Halcyon (hidden unless "Show archived" is on). */
+	archived: SessionId[];
 	filter: SavedFilter | null;
 }
 

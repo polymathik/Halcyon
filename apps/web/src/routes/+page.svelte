@@ -113,7 +113,11 @@
 
 	// ---------- data ----------
 	const providers = $derived(data.sessions?.providers ?? []);
-	const sessions = $derived(data.sessions?.sessions ?? []);
+	const allSessions = $derived(data.sessions?.sessions ?? []);
+	// Archived sessions leave the canvas unless "Show archived" is on.
+	const archived = new SvelteSet<string>();
+	let showArchived = $state(readPref('showArchived', false));
+	const sessions = $derived(showArchived ? allSessions : allSessions.filter((s) => !archived.has(s.id)));
 	const problems = $derived(providers.filter((p) => p.health.state !== 'ok'));
 	const agentsFound = $derived(providers.filter((p) => p.health.state === 'ok').length);
 
@@ -147,6 +151,7 @@
 			}
 			for (const z of workspace.zones) zones.set(z.id, z);
 			for (const t of workspace.titles) titlesOf.set(t.sessionId, t.title);
+			for (const id of workspace.archived) archived.add(id);
 			applyTags(workspace);
 			if (workspace.filter) {
 				filterTags = workspace.filter.tags;
@@ -283,7 +288,7 @@
 	// so later discoveries never move existing cards.
 	$effect(() => {
 		if (!workspaceReady) return;
-		const unplaced = sessions
+		const unplaced = allSessions
 			.filter((s) => !positions.has(s.id))
 			.sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''));
 		if (unplaced.length === 0) return;
@@ -736,6 +741,66 @@
 		}
 	}
 
+	// ---------- archive ----------
+	/** Archives or restores sessions in Halcyon only; transcripts are never touched. */
+	async function setArchived(ids: string[], value: boolean, undoable = true) {
+		if (ids.length === 0) return;
+		const zonesTouched = new Set(ids.map((id) => zoneOf.get(id) ?? null).filter((z): z is number => z !== null));
+		for (const id of ids) {
+			if (value) archived.add(id);
+			else archived.delete(id);
+			multi.delete(id);
+		}
+		if (value && selectedId && ids.includes(selectedId) && !showArchived) selectedId = null;
+		// Zones close the gaps (or make room again).
+		const changed = newChanges();
+		for (const z of zonesTouched) reflowZone(z, changed);
+		if (!value && !showArchived) {
+			// Restored free cards get a free spot in case the space was taken meanwhile.
+			for (const id of ids) {
+				const p = positions.get(id);
+				if (p && (zoneOf.get(id) ?? null) === null) {
+					positions.set(id, freeSpot({ ...p, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+					changed.cards.add(id);
+				}
+			}
+		}
+		persist(changed);
+		try {
+			await api.setArchived(ids, value);
+		} catch {
+			saveFailed();
+			return;
+		}
+		if (!undoable) return;
+		const label = plural(ids.length, 'session');
+		showToast(
+			value ? `Archived ${label}${showArchived ? '' : ' · find them with Show archived'}` : `Unarchived ${label}`,
+			() => setArchived(ids, !value, false)
+		);
+	}
+
+	function toggleShowArchived() {
+		showArchived = !showArchived;
+		writePref('showArchived', showArchived);
+		menuOpen = false;
+		// Zones re-arrange with or without their archived cards; shown free cards find space.
+		queueMicrotask(() => {
+			const changed = newChanges();
+			for (const id of [...zones.keys()]) reflowZone(id, changed);
+			if (showArchived)
+				for (const id of archived) {
+					const p = positions.get(id);
+					if (p && (zoneOf.get(id) ?? null) === null) {
+						positions.set(id, freeSpot({ ...p, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+						changed.cards.add(id);
+					}
+				}
+			persist(changed);
+		});
+	}
+	const archivedCount = $derived(allSessions.filter((s) => archived.has(s.id)).length);
+
 	// ---------- session names ----------
 	let renamingSession = $state<string | null>(null);
 	/** Saves a Halcyon display name; empty or the original name resets it. */
@@ -817,7 +882,7 @@
 				<div class="actions"><button class="hc-btn hc-btn--primary" onclick={rescan} disabled={rescanning}>Retry</button></div>
 			</div>
 		</div>
-	{:else if data.sessions && sessions.length === 0}
+	{:else if data.sessions && allSessions.length === 0}
 		<div class="center dotted">
 			<div class="hc-empty">
 				<svg class="hc-empty__art" viewBox="0 0 120 72" aria-hidden="true">
@@ -846,6 +911,7 @@
 		<Canvas
 			bind:this={canvas}
 			{sessions}
+			{archived}
 			{positions}
 			{zones}
 			{zoneOf}
@@ -897,7 +963,7 @@
 				{/each}
 				{#if !bannerDismissed}
 					<div class="hc-float hc-banner">
-						<span><b>Found {plural(agentsFound, 'agent')} · {plural(sessions.length, 'session')}.</b> <span class="muted">Group them by project, or drag cards into zones.</span></span>
+						<span><b>Found {plural(agentsFound, 'agent')} · {plural(allSessions.length, 'session')}.</b> <span class="muted">Group them by project, or drag cards into zones.</span></span>
 						{#if zones.size === 0}
 							<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={groupByProject}><Icon name="group" size={13} />Group by project</button>
 						{/if}
@@ -975,6 +1041,9 @@
 			<button class="hc-pop__row" role="menuitem" onclick={groupByProject}>
 				<Icon name="group" />Group by project <span class="n">zones per repo</span>
 			</button>
+			<button class="hc-pop__row" role="menuitemcheckbox" aria-checked={showArchived} onclick={toggleShowArchived}>
+				<Icon name="archive" />Show archived <span class="n">{showArchived ? 'On' : 'Off'} · {archivedCount}</span>
+			</button>
 			<div class="divider"></div>
 			<button
 				class="hc-pop__row"
@@ -1023,6 +1092,8 @@
 				session={selected}
 				{now}
 				name={titlesOf.get(selected.id) ?? null}
+				isArchived={archived.has(selected.id)}
+				onarchive={(value) => setArchived([selected.id], value)}
 				onrename={(title) => renameSession(selected.id, title)}
 				tags={tagsOf.get(selected.id) ?? []}
 				zones={[...zones.values()]}
@@ -1041,6 +1112,11 @@
 			<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={zoneFromSelection}><Icon name="zone" size={13} />Create zone</button>
 			{#if selectionInZones}
 				<button class="hc-btn hc-btn--sm" onclick={removeSelectionFromZones}>Remove from zone</button>
+			{/if}
+			{#if selectedList.every((id) => archived.has(id))}
+				<button class="hc-btn hc-btn--sm" onclick={() => setArchived(selectedList, false)}><Icon name="archive" size={13} />Unarchive</button>
+			{:else}
+				<button class="hc-btn hc-btn--sm" onclick={() => setArchived(selectedList.filter((id) => !archived.has(id)), true)}><Icon name="archive" size={13} />Archive</button>
 			{/if}
 			<button class="hc-iconbtn small" onclick={() => multi.clear()} aria-label="Clear selection" title="Clear selection (Esc)"><Icon name="x" /></button>
 		</div>
@@ -1120,7 +1196,8 @@
 		position: absolute;
 		top: 48px;
 		right: 8px;
-		z-index: var(--z-panel);
+		/* Above the sidebar, which shares the panel layer. */
+		z-index: calc(var(--z-panel) + 10);
 		width: 300px;
 	}
 	.menu button.hc-pop__row {

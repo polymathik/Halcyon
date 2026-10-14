@@ -17,7 +17,8 @@
 		activeTags = [],
 		highlighted = false,
 		dimmed = false,
-		hidden = false
+		hidden = false,
+		isArchived = false
 	}: {
 		session: Session;
 		/** Display name given in Halcyon; overrides the provider title. */
@@ -36,6 +37,7 @@
 		highlighted?: boolean;
 		dimmed?: boolean;
 		hidden?: boolean;
+		isArchived?: boolean;
 	} = $props();
 
 	const title = $derived(customTitle ?? displayTitle(session));
@@ -71,6 +73,7 @@
 		class:is-compact={compact}
 		class:is-highlighted={highlighted}
 		class:is-dimmed={dimmed}
+		class:archived={isArchived}
 		data-id={session.id}
 		role="button"
 		tabindex="0"
@@ -79,6 +82,7 @@
 	>
 		<div class="hc-card__head">
 			<span class="hc-pmark" data-p={session.provider} title={providerLabel(session.provider)}>{providerMonogram(session.provider)}</span>
+			{#if isArchived}<span class="hc-chip hc-chip--count archived-chip">Archived</span>{/if}
 			{#if renaming}
 				<input
 					bind:this={input}
@@ -139,6 +143,15 @@
 		height: calc(var(--provider-mark) * var(--lod, 1));
 		font-size: calc(10px * var(--lod, 1));
 		border-radius: calc(var(--radius-sm) * var(--lod, 1));
+	}
+	.hc-card.archived {
+		opacity: 0.6;
+		border-style: dashed;
+		box-shadow: none;
+	}
+	.archived-chip {
+		order: 3;
+		flex: none;
 	}
 	.rename {
 		flex: 1;

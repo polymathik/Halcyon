@@ -35,8 +35,8 @@ function setup(projectPath: string | null = null) {
 describe('schema v3', () => {
 	it('migrates to the latest version', () => {
 		const db = memoryDb();
-		expect(migrate(db)).toBe(3);
-		expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+		expect(migrate(db)).toBe(4);
+		expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
 	});
 });
 
@@ -51,6 +51,21 @@ describe('session display names', () => {
 		expect((await call('PUT', `/api/sessions/${sid}/title`, { title: 42 })).status).toBe(400);
 		expect((await call('PUT', `/api/sessions/${sid}/title`, { title: '' })).status).toBe(204);
 		expect(workspaces.get()?.titles).toEqual([]);
+	});
+});
+
+describe('archive', () => {
+	it('archives and restores sessions in batches, validating IDs', async () => {
+		const { call, workspaces } = setup();
+		const a = `claude:${ids.a}`;
+		const b = `codex:${ids.b}`;
+		expect((await call('PUT', '/api/sessions/archive', { sessionIds: [a, b], archived: true })).status).toBe(204);
+		expect(workspaces.get()?.archived).toEqual([a, b]);
+		expect((await call('PUT', '/api/sessions/archive', { sessionIds: [a], archived: false })).status).toBe(204);
+		expect(workspaces.get()?.archived).toEqual([b]);
+		expect((await call('PUT', '/api/sessions/archive', { sessionIds: ['nope'], archived: true })).status).toBe(400);
+		expect((await call('PUT', '/api/sessions/archive', { sessionIds: [a], archived: 'yes' })).status).toBe(400);
+		expect(workspaces.get()?.archived).toEqual([b]);
 	});
 });
 

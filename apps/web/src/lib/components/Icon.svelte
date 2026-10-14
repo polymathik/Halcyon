@@ -12,6 +12,7 @@
 		group: '<rect x="2" y="2.5" width="5" height="4.5" rx="1.2"/><rect x="9" y="2.5" width="5" height="4.5" rx="1.2"/><rect x="2" y="9" width="12" height="4.5" rx="1.2"/>',
 		chevron: '<path d="M4.5 6.5 8 10l3.5-3.5"/>',
 		select: '<rect x="2.5" y="2.5" width="11" height="11" rx="2" stroke-dasharray="2.2 2"/><path d="M6 8.2 7.5 9.7 10.5 6.5"/>',
+		archive: '<rect x="2" y="3" width="12" height="3.5" rx="1"/><path d="M3 6.5v6c0 .6.4 1 1 1h8c.6 0 1-.4 1-1v-6M6.5 9h3"/>',
 		check: '<path d="M3.5 8.5 6.5 11.5 12.5 4.5"/>',
 		fit: '<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>',
 		moon: '<path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1z"/>',

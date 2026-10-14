@@ -47,6 +47,7 @@ export const api = {
 	command: (sessionId: string, signal?: AbortSignal) => getJson<SessionCommandResponse>(sessionPath(sessionId, 'command'), fetch, signal),
 	resume: (sessionId: string) => send('POST', sessionPath(sessionId, 'resume')),
 	openFolder: (sessionId: string) => send('POST', sessionPath(sessionId, 'open-folder')),
+	setArchived: (sessionIds: string[], archived: boolean) => send('PUT', '/api/sessions/archive', { sessionIds, archived }),
 	setTitle: (sessionId: string, title: string | null) => send('PUT', sessionPath(sessionId, 'title'), { title }),
 	setTags: (sessionId: string, tags: string[]) => send<TagsResponse>('PUT', sessionPath(sessionId, 'tags'), { tags }),
 	savePlacements: (placements: PlacementBatch['placements']) => send('PUT', '/api/workspace/placements', { placements }),

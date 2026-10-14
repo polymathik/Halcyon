@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+	MAX_ARCHIVE_BATCH,
 	MAX_TAGS_PER_SESSION,
 	MAX_TITLE_LENGTH,
 	normalizeTag,
@@ -9,6 +10,7 @@ import {
 	ZONE_COLORS,
 	type ApiError,
 	type SavedFilter,
+	type SessionId,
 	type SessionCommandResponse,
 	type SessionPreviewResponse,
 	type ZoneColor,
@@ -141,6 +143,22 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 			names.push(tag);
 		}
 		return c.json(workspaces.setSessionTags(parsed.id, names));
+	});
+
+	api.put('/sessions/archive', async (c) => {
+		const body = await readJson(c);
+		const raw = body?.sessionIds;
+		if (!Array.isArray(raw) || raw.length > MAX_ARCHIVE_BATCH || typeof body?.archived !== 'boolean') {
+			return c.json<ApiError>({ error: `Expected { sessionIds: string[] (at most ${MAX_ARCHIVE_BATCH}), archived: boolean }` }, 400);
+		}
+		const ids: SessionId[] = [];
+		for (const value of raw) {
+			const parsed = parseSessionId(value);
+			if (!parsed) return c.json<ApiError>({ error: 'Invalid session ID' }, 400);
+			ids.push(parsed.id);
+		}
+		workspaces.setArchived(ids, body.archived);
+		return c.body(null, 204);
 	});
 
 	api.put('/sessions/:sessionId/title', async (c) => {
