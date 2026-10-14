@@ -305,6 +305,17 @@
 		persist(changed);
 	});
 
+	// Once per load, tidy every zone so layouts saved before zones arranged
+	// their cards (or edited elsewhere) never show overlaps.
+	let tidied = false;
+	$effect(() => {
+		if (tidied || !workspaceReady || !data.sessions) return;
+		tidied = true;
+		const changed = newChanges();
+		for (const id of [...zones.keys()]) reflowZone(id, changed);
+		if (changed.cards.size || changed.zones.size) persist(changed);
+	});
+
 	// ---------- filter ----------
 	let filterTags = $state<string[]>([]);
 	let filterMode = $state<'highlight' | 'only'>('highlight');
