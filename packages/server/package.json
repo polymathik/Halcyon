@@ -1,0 +1,30 @@
+{
+  "name": "halcyon",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local-first canvas for your AI coding CLI sessions",
+  "type": "module",
+  "bin": {
+    "halcyon": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22.17"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "bundle-web": "node scripts/bundle-web.mjs",
+    "dev": "node --watch dist/cli.js --no-open --fixtures"
+  },
+  "dependencies": {
+    "@halcyon/core": "workspace:*",
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13"
+  }
+}
