@@ -1,18 +1,34 @@
-import type { Session } from '@halcyon/core';
+import type { ProviderId, Session } from '@halcyon/core';
 
-const PROVIDER_LABELS: Record<Session['provider'], string> = {
+const PROVIDER_LABELS: Record<ProviderId, string> = {
 	claude: 'Claude Code',
 	codex: 'Codex'
 };
 
-export function providerLabel(provider: Session['provider']): string {
+/** Monogram for the design system's provider tile (never a vendor logo). */
+const PROVIDER_MONOGRAMS: Record<ProviderId, string> = {
+	claude: 'C',
+	codex: 'Cx'
+};
+
+export function providerLabel(provider: ProviderId): string {
 	return PROVIDER_LABELS[provider];
+}
+
+export function providerMonogram(provider: ProviderId): string {
+	return PROVIDER_MONOGRAMS[provider];
 }
 
 export function projectName(path: string | null): string | null {
 	if (!path) return null;
 	const parts = path.split(/[/\\]/).filter(Boolean);
 	return parts.at(-1) ?? path;
+}
+
+/** Shorten a home-directory path to `~/…` for display. Display only. */
+export function displayPath(path: string | null): string | null {
+	if (!path) return null;
+	return path.replace(/^(\/Users|\/home)\/[^/]+(?=\/|$)/, '~').replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, '~');
 }
 
 /** Neutral label used when the provider has no title; never prompt text. */
@@ -22,21 +38,33 @@ export function displayTitle(session: Session): string {
 	return project ? `${providerLabel(session.provider)} session · ${project}` : `${providerLabel(session.provider)} session`;
 }
 
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-
+/** Compact relative time per the design system: now, 4m, 3h, 2d, 5w, 3mo, 1y. */
 export function relativeTime(iso: string | null, now = Date.now()): string {
-	if (!iso) return 'Unknown';
-	const seconds = Math.round((new Date(iso).getTime() - now) / 1000);
-	const units: [Intl.RelativeTimeFormatUnit, number][] = [
-		['year', 31_536_000],
-		['month', 2_592_000],
-		['week', 604_800],
-		['day', 86_400],
-		['hour', 3_600],
-		['minute', 60]
+	if (!iso) return '—';
+	const time = new Date(iso).getTime();
+	if (Number.isNaN(time)) return '—';
+	const seconds = Math.max(0, Math.round((now - time) / 1000));
+	const units: [string, number][] = [
+		['y', 31_536_000],
+		['mo', 2_592_000],
+		['w', 604_800],
+		['d', 86_400],
+		['h', 3_600],
+		['m', 60]
 	];
 	for (const [unit, size] of units) {
-		if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
+		if (seconds >= size) return `${Math.floor(seconds / size)}${unit}`;
 	}
-	return 'Just now';
+	return 'now';
+}
+
+/** Full local timestamp for tooltips. */
+export function exactTime(iso: string | null): string | undefined {
+	if (!iso) return undefined;
+	const date = new Date(iso);
+	return Number.isNaN(date.getTime()) ? undefined : date.toLocaleString();
+}
+
+export function plural(count: number, one: string, many = `${one}s`): string {
+	return `${count} ${count === 1 ? one : many}`;
 }

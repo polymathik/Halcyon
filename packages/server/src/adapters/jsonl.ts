@@ -23,6 +23,11 @@ export interface JsonlOptions {
 	accept?: (line: string) => boolean;
 	/** Decode a compressed file (Codex compresses finished rollouts with zstd). */
 	decompress?: 'zstd';
+	/**
+	 * Byte offset to start reading from (plain files only). The partial line at
+	 * the offset is discarded, so reading begins at the next complete record.
+	 */
+	start?: number;
 }
 
 /**
@@ -57,8 +62,13 @@ export async function readJsonl(
 		}
 	};
 
-	const source = createReadStream(path, options.signal ? { signal: options.signal } : {});
 	const compressed = options.decompress === 'zstd';
+	const startAt = !compressed && options.start && options.start > 0 ? Math.floor(options.start) : 0;
+	let skipPartial = startAt > 0;
+	const source = createReadStream(path, {
+		...(options.signal ? { signal: options.signal } : {}),
+		...(startAt > 0 ? { start: startAt } : {})
+	});
 	let chunks: AsyncIterable<Buffer> = source;
 	if (compressed) {
 		// Count bytes on disk; the iterator below sees decompressed output.
@@ -74,6 +84,15 @@ export async function readJsonl(
 			if (!compressed) stats.bytesRead += chunk.length;
 			const text = remainder + decoder.write(chunk);
 			let start = 0;
+			if (skipPartial) {
+				const first = text.indexOf('\n');
+				if (first < 0) {
+					remainder = text;
+					continue;
+				}
+				start = first + 1;
+				skipPartial = false;
+			}
 			let newline = text.indexOf('\n', start);
 			while (newline >= 0) {
 				handle(text.slice(start, newline), true);
@@ -85,6 +104,6 @@ export async function readJsonl(
 	} finally {
 		source.destroy();
 	}
-	handle(remainder + decoder.end(), false);
+	if (!skipPartial) handle(remainder + decoder.end(), false);
 	return stats;
 }

@@ -1,4 +1,6 @@
 import type {
+	NativeCommand,
+	PreviewMessage,
 	ProviderAdapter,
 	ProviderHealth,
 	ProviderStatus,
@@ -8,6 +10,16 @@ import type {
 import type { SessionCacheStore } from '../db/session-cache.js';
 
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
+const PREVIEW_TIMEOUT_MS = 10_000;
+
+export const PREVIEW_LIMIT = 6;
+export const PREVIEW_MAX_CHARS = 1_200;
+
+export type PreviewResult =
+	| { kind: 'ok'; messages: PreviewMessage[] }
+	| { kind: 'not-found' }
+	| { kind: 'unsupported' }
+	| { kind: 'error'; message: string };
 
 interface ProviderOutcome {
 	status: ProviderStatus;
@@ -48,6 +60,46 @@ export class DiscoveryService {
 			this.inflight = null;
 		});
 		return this.inflight;
+	}
+
+	/**
+	 * A bounded preview of recent messages, read from the session's transcript
+	 * on request. Nothing is cached; errors carry no transcript content.
+	 */
+	async preview(sessionId: Session['id']): Promise<PreviewResult> {
+		if (!this.snapshot) await this.refresh();
+		const source = this.cache.source(sessionId);
+		if (!source) return { kind: 'not-found' };
+		const adapter = this.adapters.find((candidate) => candidate.provider === source.provider);
+		if (!adapter) return { kind: 'not-found' };
+		if (!adapter.preview) return { kind: 'unsupported' };
+
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), PREVIEW_TIMEOUT_MS);
+		try {
+			const messages = await adapter.preview(source.path, {
+				limit: PREVIEW_LIMIT,
+				maxChars: PREVIEW_MAX_CHARS,
+				signal: controller.signal
+			});
+			return { kind: 'ok', messages };
+		} catch (error) {
+			return {
+				kind: 'error',
+				message: controller.signal.aborted ? 'Preview timed out' : 'Transcript could not be read'
+			};
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	/** A present session and its provider's resume command (null when unsupported). */
+	async session(sessionId: Session['id']): Promise<{ session: Session; command: NativeCommand | null } | null> {
+		const snapshot = await this.current();
+		const session = snapshot.sessions.find((candidate) => candidate.id === sessionId);
+		if (!session) return null;
+		const adapter = this.adapters.find((candidate) => candidate.provider === session.provider);
+		return { session, command: adapter ? adapter.resumeCommand(session) : null };
 	}
 
 	private async scanAll(): Promise<SessionsResponse> {

@@ -1,6 +1,7 @@
 import type {
 	DiscoveredSession,
 	NativeCommand,
+	PreviewMessage,
 	ProviderAdapter,
 	ProviderId,
 	Session
@@ -28,9 +29,22 @@ export function createFixtureAdapter(provider: ProviderId, sessions: Session[]):
 		},
 		resumeCommand(): NativeCommand | null {
 			return null;
+		},
+		async preview(sourcePath, { limit }): Promise<PreviewMessage[]> {
+			const session = sessions.find((s) => `fixture:${s.id}` === sourcePath);
+			if (!session) throw new Error('Unknown fixture transcript');
+			return FIXTURE_PREVIEW.slice(-limit).map((message) => ({ ...message, clipped: false, at: session.lastActivityAt }));
 		}
 	};
 }
+
+/** Invented demo conversation shown for every fixture session. */
+const FIXTURE_PREVIEW: Omit<PreviewMessage, 'clipped' | 'at'>[] = [
+	{ role: 'user', text: 'Pick up where we left off and finish the remaining tests.' },
+	{ role: 'assistant', text: 'Done. All 12 tests pass. Two edge cases are still untested: an empty request body and a timeout on retry. Want me to add those?' },
+	{ role: 'user', text: 'Yes, add both.' },
+	{ role: 'assistant', text: 'Added both cases and they pass. Ready for review.' }
+];
 
 export function fixtureSession(
 	provider: ProviderId,
