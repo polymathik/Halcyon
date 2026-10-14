@@ -61,6 +61,24 @@ export interface NativeCommand {
 	cwd: string | null;
 }
 
+/** One message in a bounded, on-request transcript preview. */
+export interface PreviewMessage {
+	role: 'user' | 'assistant';
+	/** Plain text, clipped to the requested length. Never persisted or logged. */
+	text: string;
+	/** True when `text` was cut to fit `maxChars`. */
+	clipped: boolean;
+	at: string | null;
+}
+
+export interface PreviewOptions {
+	/** Most recent messages to return. */
+	limit: number;
+	/** Maximum characters per message. */
+	maxChars: number;
+	signal?: AbortSignal;
+}
+
 export interface ProviderAdapter {
 	readonly provider: ProviderId;
 	readonly displayName: string;
@@ -71,4 +89,11 @@ export interface ProviderAdapter {
 	/** Called only after `detect()` reports the store available. */
 	scan(context: ScanContext): Promise<ScanResult>;
 	resumeCommand(session: Session): NativeCommand | null;
+	/**
+	 * The last human-authored and assistant text messages from a transcript the
+	 * adapter returned in `scan()`. Read only when the user asks for it; the
+	 * result is never cached, persisted or logged. Optional: adapters without it
+	 * report the preview as unsupported.
+	 */
+	preview?(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]>;
 }

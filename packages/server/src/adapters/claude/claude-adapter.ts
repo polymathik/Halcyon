@@ -9,10 +9,14 @@ import type {
 	ProviderAvailability,
 	ScanContext,
 	ScanResult,
+	PreviewMessage,
+	PreviewOptions,
 	ScanWarning,
 	Session
 } from '@halcyon/core';
 import { isValidNativeId, toSessionId } from '@halcyon/core';
+import { assertInside } from '../preview.js';
+import { previewClaudeTranscript } from './preview.js';
 import { parseClaudeTranscript } from './transcript.js';
 
 const PARSER_VERSION = 1;
@@ -136,6 +140,11 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
 		resumeCommand(session: Session): NativeCommand | null {
 			if (!isValidNativeId(session.nativeId)) return null;
 			return { executable: 'claude', args: ['--resume', session.nativeId], cwd: session.projectPath };
+		},
+
+		async preview(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]> {
+			assertInside(projectsDir, sourcePath);
+			return previewClaudeTranscript(sourcePath, options);
 		}
 	};
 }

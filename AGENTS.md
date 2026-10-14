@@ -29,12 +29,14 @@ Keep oversight agent/MCP, prompt injection, additional providers, rich live stat
 - Do not infer `working`, `waiting`, or `error` from a recent file write or a stale turn record. Show last activity or `unknown` until a live signal is verified.
 - Scope Codex discovery to top-level local CLI sessions for the MVP. IDE/desktop chats, remote chats, and subagents need separate resume semantics.
 
+- UI follows the Halcyon design system (https://claude.ai/code/artifact/ba7edb57-8997-44d1-87e7-812b27d7bb02). Its tokens and `hc-*` component styles are vendored in `apps/web/src/lib/design/`; regenerate `tokens.css` with `pnpm --filter web tokens` and re-vendor rather than editing them. Use tokens and `hc-*` classes, not ad-hoc colours or sizes. Self-host fonts; no CDN requests.
+
 ## Privacy and actions
 
 - Keep data local. Bind the server to localhost, add no telemetry by default, and require no cloud service for core features.
 - Session transcripts can contain secrets. Parse only the fields needed for list views; do not log raw records, prompts, tool output, or credentials. Load a bounded preview only when requested, and do not persist transcript text in Halcyon's database.
 - Validate session IDs and working directories before native actions. Launch processes with executable plus argument arrays, never interpolated shell commands. Quote paths only when displaying a copyable command.
-- Confirm provider resume behavior on safe test sessions before promising one-click resume. In Phase 0, Codex CLI execution could not be validated locally.
+- Confirm provider resume behavior on safe test sessions before promising one-click resume. In Phase 0, Codex CLI execution could not be validated locally. Native actions live in `packages/server/src/actions/native.ts`; tests inject a fake launcher and must never start real processes.
 
 ## Working conventions
 
@@ -48,6 +50,7 @@ Keep oversight agent/MCP, prompt injection, additional providers, rich live stat
 ## Local reference notes
 
 - `_docs/Halcyon-Product-Design.md` — original product design draft.
+- `_docs/Halcyon-UI-Design.md` — UI concepts, v0.2 aligned with the design system.
 - `_docs/MVP-Plan.md` — phases and acceptance gates.
 - `_docs/Implementation-Tracker.md` — current state and next-session handoff; read and update every session.
 - `_docs/Claude-Adapter-Discovery.md` and `_docs/Codex-Adapter-Discovery.md` — Phase 0 evidence and open risks.

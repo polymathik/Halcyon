@@ -97,7 +97,7 @@ export function classifySessionMeta(payload: Record<string, unknown>): Exclusion
 const WRAPPED_ELEMENT = /^<([A-Za-z][\w:-]*)(?:\s[^>]*)?>[\s\S]*<\/\1>$/;
 const AGENTS_HEADER = '# AGENTS.md instructions';
 
-function isInjectedOrBlank(item: unknown): boolean {
+export function isInjectedOrBlank(item: unknown): boolean {
 	if (!item || typeof item !== 'object') return false;
 	const { type, text } = item as { type?: unknown; text?: unknown };
 	if (type !== 'input_text' || typeof text !== 'string') return false;
@@ -125,7 +125,7 @@ export function isHumanUserMessage(payload: Record<string, unknown>): boolean {
  * of a transcript (tool output, reasoning, token counts). Lines that do not
  * match the layout are parsed and checked structurally instead.
  */
-const RECORD_PREFIX = /^\{"timestamp":"([^"]{1,64})",(?:"ordinal":\d+,)?"type":"([a-z_]{1,64})"/;
+export const RECORD_PREFIX = /^\{"timestamp":"([^"]{1,64})",(?:"ordinal":\d+,)?"type":"([a-z_]{1,64})"/;
 const USER_ROLE = '"role":"user"';
 const HEAD_WINDOW = 512;
 

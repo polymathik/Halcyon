@@ -89,6 +89,14 @@ export class SessionCacheStore {
 		}
 	}
 
+	/** Source transcript of a present session, for on-request previews. */
+	source(sessionId: string): { provider: ProviderId; path: string } | null {
+		const row = this.db
+			.prepare('SELECT provider, source_path FROM session_cache WHERE session_id = ? AND missing_since IS NULL')
+			.get(sessionId) as { provider: ProviderId; source_path: string } | undefined;
+		return row ? { provider: row.provider, path: row.source_path } : null;
+	}
+
 	/** Last known present sessions for a provider, used when a scan fails. */
 	lastKnown(provider: ProviderId): Session[] {
 		const rows = this.db

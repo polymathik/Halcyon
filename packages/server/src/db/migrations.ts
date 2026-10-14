@@ -86,6 +86,20 @@ const MIGRATIONS: string[] = [
 	BEGIN
 		SELECT RAISE(ABORT, 'zone belongs to a different workspace');
 	END;
+	`,
+	`
+	-- User-owned display names. Halcyon never writes to provider transcripts.
+	CREATE TABLE session_titles (
+		session_id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	-- A zone created for a project folder; new sessions from it join the zone.
+	ALTER TABLE zones ADD COLUMN project_path TEXT;
+	`,
+	`
+	-- A collapsed zone shows only its label; its cards are hidden, not moved.
+	ALTER TABLE zones ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
 	`
 ];
 

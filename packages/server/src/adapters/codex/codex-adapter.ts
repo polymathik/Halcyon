@@ -11,12 +11,16 @@ import type {
 	ScanContext,
 	ScanResult,
 	ScanWarning,
+	PreviewMessage,
+	PreviewOptions,
 	Session,
 	TitleSource
 } from '@halcyon/core';
 import { isValidNativeId, toSessionId } from '@halcyon/core';
 import { parseRollout, ROLLOUT_FILE, type ExclusionReason } from './parse-rollout.js';
 import { loadSessionIndex } from './session-index.js';
+import { assertInside } from '../preview.js';
+import { previewCodexRollout } from './preview.js';
 
 const PARSER_VERSION = 1;
 
@@ -255,6 +259,11 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
 		resumeCommand(session: Session): NativeCommand | null {
 			if (session.provider !== 'codex' || !isValidNativeId(session.nativeId)) return null;
 			return { executable: 'codex', args: ['resume', session.nativeId], cwd: session.projectPath };
+		},
+
+		async preview(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]> {
+			assertInside(sessionsDir, sourcePath);
+			return previewCodexRollout(sourcePath, options);
 		},
 
 		lastScanStats() {

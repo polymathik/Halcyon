@@ -1,6 +1,7 @@
 /_docs/
 node_modules/
 dist/
+release/
 *.tsbuildinfo
 .DS_Store
 .playwright-mcp/
