@@ -46,10 +46,10 @@ export class WorkspaceStore {
 		const zones = (
 			this.db
 				.prepare(
-					'SELECT id, name, color, x, y, width, height, project_path AS projectPath FROM zones WHERE workspace_id = ? ORDER BY id'
+					'SELECT id, name, color, x, y, width, height, project_path AS projectPath, collapsed FROM zones WHERE workspace_id = ? ORDER BY id'
 				)
-				.all(workspaceId) as unknown as Zone[]
-		).map((zone) => ({ ...zone, color: asZoneColor(zone.color) }));
+				.all(workspaceId) as unknown as RawZone[]
+		).map(toZone);
 		const titles = this.db
 			.prepare('SELECT session_id AS sessionId, title FROM session_titles ORDER BY session_id')
 			.all() as unknown as { sessionId: SessionId; title: string }[];
@@ -113,12 +113,13 @@ export class WorkspaceStore {
 
 	createZone(input: ZoneInput, workspaceId = DEFAULT_WORKSPACE): Zone {
 		const projectPath = input.projectPath ?? null;
+		const collapsed = input.collapsed ?? false;
 		const result = this.db
 			.prepare(
-				'INSERT INTO zones (workspace_id, name, color, x, y, width, height, project_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO zones (workspace_id, name, color, x, y, width, height, project_path, collapsed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			)
-			.run(workspaceId, input.name, input.color, input.x, input.y, input.width, input.height, projectPath, new Date().toISOString());
-		return { id: Number(result.lastInsertRowid), ...input, projectPath };
+			.run(workspaceId, input.name, input.color, input.x, input.y, input.width, input.height, projectPath, collapsed ? 1 : 0, new Date().toISOString());
+		return { id: Number(result.lastInsertRowid), ...input, projectPath, collapsed };
 	}
 
 	updateZone(id: number, changes: Partial<ZoneInput>, workspaceId = DEFAULT_WORKSPACE): Zone {
@@ -126,9 +127,9 @@ export class WorkspaceStore {
 		const next = { ...zone, ...changes };
 		this.db
 			.prepare(
-				'UPDATE zones SET name = ?, color = ?, x = ?, y = ?, width = ?, height = ?, project_path = ? WHERE id = ? AND workspace_id = ?'
+				'UPDATE zones SET name = ?, color = ?, x = ?, y = ?, width = ?, height = ?, project_path = ?, collapsed = ? WHERE id = ? AND workspace_id = ?'
 			)
-			.run(next.name, next.color, next.x, next.y, next.width, next.height, next.projectPath ?? null, id, workspaceId);
+			.run(next.name, next.color, next.x, next.y, next.width, next.height, next.projectPath ?? null, next.collapsed ? 1 : 0, id, workspaceId);
 		return next;
 	}
 
@@ -182,10 +183,12 @@ export class WorkspaceStore {
 
 	private requireZone(id: number, workspaceId: string): Zone {
 		const zone = this.db
-			.prepare('SELECT id, name, color, x, y, width, height, project_path AS projectPath FROM zones WHERE id = ? AND workspace_id = ?')
-			.get(id, workspaceId) as Zone | undefined;
+			.prepare(
+				'SELECT id, name, color, x, y, width, height, project_path AS projectPath, collapsed FROM zones WHERE id = ? AND workspace_id = ?'
+			)
+			.get(id, workspaceId) as RawZone | undefined;
 		if (!zone) throw new NotFoundError(`Zone ${id} not found`);
-		return { ...zone, color: asZoneColor(zone.color) };
+		return toZone(zone);
 	}
 
 	private transaction(work: () => void): void {
@@ -198,6 +201,12 @@ export class WorkspaceStore {
 			throw error;
 		}
 	}
+}
+
+type RawZone = Omit<Zone, 'collapsed' | 'color'> & { color: string; collapsed: number };
+
+function toZone(row: RawZone): Zone {
+	return { ...row, color: asZoneColor(row.color), collapsed: row.collapsed === 1 };
 }
 
 function asZoneColor(value: string): ZoneColor {

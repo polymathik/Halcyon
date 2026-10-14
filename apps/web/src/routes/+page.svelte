@@ -9,10 +9,18 @@
 		type ZoneInput
 	} from '@halcyon/core';
 	import { onMount } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import { api } from '#lib/api.js';
-	import { bounds, CARD_HEIGHT, CARD_WIDTH, type Camera, type Point } from '#lib/canvas/geometry.js';
+	import {
+		bounds,
+		CARD_HEIGHT,
+		CARD_WIDTH,
+		COLLAPSED_ZONE_HEIGHT,
+		COLLAPSED_ZONE_WIDTH,
+		type Camera,
+		type Point
+	} from '#lib/canvas/geometry.js';
 	import {
 		arrangeZone,
 		cardHeightFor,
@@ -167,6 +175,11 @@
 	const presentIds = $derived(new Set<string>(sessions.map((s) => s.id)));
 	const cardH = (id: string) => cardHeightFor((tagsOf.get(id)?.length ?? 0) > 0);
 	const zoneBox = (z: Zone) => ({ x: z.x, y: z.y, w: z.width, h: z.height });
+	/** The space a zone takes on the canvas: only its label row when collapsed. */
+	const shownBox = (z: Zone) =>
+		z.collapsed
+			? { x: z.x, y: z.y, w: Math.min(z.width, COLLAPSED_ZONE_WIDTH), h: COLLAPSED_ZONE_HEIGHT }
+			: zoneBox(z);
 	const projectKey = (s: Session) => s.projectRoot ?? s.projectPath ?? null;
 	const membersOf = (zoneId: number) => [...zoneOf].filter(([id, z]) => z === zoneId && presentIds.has(id)).map(([id]) => id);
 	const zoneName = (id: number | null) => (id === null ? null : (zones.get(id)?.name ?? null));
@@ -177,7 +190,8 @@
 		y: z.y,
 		width: z.width,
 		height: z.height,
-		projectPath: z.projectPath
+		projectPath: z.projectPath,
+		collapsed: z.collapsed
 	});
 
 	/** Re-lays out a zone's cards, optionally inserting one at a drop point, and fits the zone. */
@@ -201,16 +215,16 @@
 			const grew = result.h > zone.height || result.w > zone.width;
 			zones.set(zoneId, { ...zone, width: result.w, height: result.h });
 			changed.zones.add(zoneId);
-			if (grew && options.separate !== false) separate(zoneId, changed);
+			if (grew && options.separate !== false && !zone.collapsed) separate(zoneId, changed);
 		}
 	}
 
 	/** Pushes zones and free cards that overlap this zone down below it. */
 	function separate(zoneId: number, changed: Changes) {
 		const zone = zones.get(zoneId);
-		if (!zone) return;
+		if (!zone || zone.collapsed) return;
 		const obstacles = [
-			...[...zones.values()].filter((z) => z.id !== zoneId).map((z) => ({ id: `z:${z.id}`, ...zoneBox(z) })),
+			...[...zones.values()].filter((z) => z.id !== zoneId).map((z) => ({ id: `z:${z.id}`, ...shownBox(z) })),
 			...sessions.flatMap((s) => {
 				const p = positions.get(s.id);
 				return p && (zoneOf.get(s.id) ?? null) === null ? [{ id: `c:${s.id}`, x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
@@ -256,7 +270,7 @@
 	/** Boxes of everything except the given card, for finding free space. */
 	function obstaclesExcept(id: string) {
 		return [
-			...[...zones.values()].map(zoneBox),
+			...[...zones.values()].map(shownBox),
 			...sessions.flatMap((s) => {
 				const p = positions.get(s.id);
 				return p && s.id !== id ? [{ x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
@@ -481,7 +495,7 @@
 		});
 		const moving = new Set(plan.flatMap((p) => p.ids));
 		const staying = [
-			...[...zones.values()].map(zoneBox),
+			...[...zones.values()].map(shownBox),
 			...sessions.flatMap((s) => {
 				const p = positions.get(s.id);
 				return p && !moving.has(s.id) ? [{ x: p.x, y: p.y, w: CARD_WIDTH, h: cardH(s.id) }] : [];
@@ -622,6 +636,106 @@
 		}
 	}
 
+	// ---------- multi-selection ----------
+	const multi = new SvelteSet<string>();
+	function select(id: string | null) {
+		selectedId = id;
+		multi.clear();
+	}
+	function changeMulti(ids: string[], mode: 'toggle' | 'add' | 'set') {
+		if (mode === 'set') multi.clear();
+		// Shift-clicking while one card is open starts the selection with it.
+		if (mode !== 'set' && multi.size === 0 && selectedId && !ids.includes(selectedId)) multi.add(selectedId);
+		for (const id of ids) {
+			if (mode === 'toggle' && multi.has(id)) multi.delete(id);
+			else multi.add(id);
+		}
+		if (multi.size > 0) selectedId = null;
+	}
+	const selectedList = $derived([...multi].filter((id) => presentIds.has(id) && positions.has(id)));
+	const selectionInZones = $derived(selectedList.some((id) => (zoneOf.get(id) ?? null) !== null));
+
+	/** Several cards dragged together: into a zone (arranged), or onto open canvas (nudged apart). */
+	function groupMoved(ids: string[], zoneId: number | null, _pointer: Point) {
+		const changed = newChanges();
+		const previous = new Set(ids.map((id) => zoneOf.get(id) ?? null).filter((z): z is number => z !== null));
+		for (const id of ids) {
+			changed.cards.add(id);
+			zoneOf.set(id, zoneId);
+		}
+		if (zoneId !== null) reflowZone(zoneId, changed);
+		else
+			for (const id of ids) {
+				const p = positions.get(id);
+				if (p) positions.set(id, freeSpot({ ...p, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+			}
+		for (const z of previous) if (z !== zoneId) reflowZone(z, changed);
+		persist(changed);
+		const label = plural(ids.length, 'session');
+		showToast(zoneId !== null ? `Moved ${label} to ${zoneName(zoneId)}` : previous.size ? `Moved ${label} out of their zones` : `Moved ${label}`);
+	}
+
+	async function zoneFromSelection() {
+		const ids = selectedList;
+		if (ids.length === 0) return;
+		const previousZones = [...new Set(ids.map((id) => zoneOf.get(id)).filter((z): z is number => z != null))];
+		const snap = snapshot(ids, previousZones);
+		const changed = newChanges();
+		try {
+			const created = await createZonesFor(
+				[{ name: 'New zone', projectPath: null, ids, color: ZONE_COLORS[zones.size % ZONE_COLORS.length]! }],
+				changed
+			);
+			for (const z of previousZones) reflowZone(z, changed);
+			persist(changed);
+			multi.clear();
+			const zone = zones.get(created[0]!);
+			if (zone) {
+				canvas?.fitBox(zoneBox(zone));
+				renamingZone = zone.id;
+			}
+			showToast(`Moved ${plural(ids.length, 'session')} into a new zone`, () => restore(snap, created));
+		} catch {
+			saveFailed();
+		}
+	}
+
+	function removeSelectionFromZones() {
+		const changed = newChanges();
+		const previous = new Set<number>();
+		for (const id of selectedList) {
+			const zoneId = zoneOf.get(id) ?? null;
+			if (zoneId === null) continue;
+			previous.add(zoneId);
+			const zone = zones.get(zoneId)!;
+			zoneOf.set(id, null);
+			const p = positions.get(id)!;
+			positions.set(id, freeSpot({ x: zone.x + zone.width + 24, y: p.y, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+			changed.cards.add(id);
+		}
+		for (const z of previous) reflowZone(z, changed);
+		persist(changed);
+		showToast('Removed from zones');
+	}
+
+	function toggleZone(zoneId: number) {
+		const zone = zones.get(zoneId);
+		if (!zone) return;
+		const collapsed = !zone.collapsed;
+		zones.set(zoneId, { ...zone, collapsed });
+		api.updateZone(zoneId, { collapsed }).catch(saveFailed);
+		if (collapsed) {
+			// Hidden cards leave the selection and the sidebar.
+			for (const id of membersOf(zoneId)) multi.delete(id);
+			if (selectedId && zoneOf.get(selectedId) === zoneId) selectedId = null;
+		} else {
+			const changed = newChanges();
+			reflowZone(zoneId, changed, { separate: false });
+			separate(zoneId, changed);
+			persist(changed);
+		}
+	}
+
 	// ---------- session names ----------
 	let renamingSession = $state<string | null>(null);
 	/** Saves a Halcyon display name; empty or the original name resets it. */
@@ -652,6 +766,7 @@
 	function escape() {
 		if (renamingZone !== null || renamingSession !== null) return;
 		if (menuOpen) menuOpen = false;
+		else if (multi.size) multi.clear();
 		else if (selectedId) selectedId = null;
 		else if (filterTags.length || filterText) {
 			filterTags = [];
@@ -739,13 +854,17 @@
 			{renamingSession}
 			filter={filterView}
 			{selectedId}
+			{multi}
 			{renamingZone}
 			sideOpen={!!selected}
 			{now}
 			{initialCamera}
 			{scrollZooms}
 			{gridOn}
-			onselect={(id) => (selectedId = id)}
+			onselect={select}
+			onmulti={changeMulti}
+			ongroupmoved={groupMoved}
+			ontogglezone={toggleZone}
 			onmoved={moved}
 			onzonereflow={zoneReflow}
 			onrenamesessionstart={(id) => {
@@ -891,6 +1010,8 @@
 				<span><kbd class="hc-kbd">←↑→↓</kbd> next card</span>
 				<span><kbd class="hc-kbd">/</kbd> filter</span>
 				<span><kbd class="hc-kbd">N</kbd> new zone</span>
+				<span><kbd class="hc-kbd">⇧</kbd> click / drag select</span>
+				<span><kbd class="hc-kbd">⌘</kbd><kbd class="hc-kbd">A</kbd> select all</span>
 				<span>Double-click a card or zone name to rename</span>
 			</div>
 		</div>
@@ -913,6 +1034,17 @@
 			/>
 		{/if}
 	</div>
+
+	{#if multi.size > 0}
+		<div class="hc-float hc-banner selection" role="toolbar" aria-label="Selection">
+			<span class="count"><Icon name="select" size={14} />{plural(selectedList.length, 'session')} selected</span>
+			<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={zoneFromSelection}><Icon name="zone" size={13} />Create zone</button>
+			{#if selectionInZones}
+				<button class="hc-btn hc-btn--sm" onclick={removeSelectionFromZones}>Remove from zone</button>
+			{/if}
+			<button class="hc-iconbtn small" onclick={() => multi.clear()} aria-label="Clear selection" title="Clear selection (Esc)"><Icon name="x" /></button>
+		</div>
+	{/if}
 
 	{#if toast}
 		<div class="hc-float hc-banner toast" role="status">
@@ -1043,6 +1175,23 @@
 		z-index: var(--z-panel);
 		padding-right: 6px;
 		min-height: 36px;
+	}
+	.selection {
+		position: absolute;
+		bottom: 64px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: var(--z-panel);
+		gap: var(--space-2);
+		padding: 6px 6px 6px 12px;
+	}
+	.selection .count {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-weight: 550;
+		margin-right: var(--space-2);
+		font-variant-numeric: tabular-nums;
 	}
 	.toast span:only-child {
 		padding-right: 6px;

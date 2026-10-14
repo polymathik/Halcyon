@@ -65,6 +65,8 @@ export interface ZoneInput {
 	height: number;
 	/** Project folder this zone collects; new sessions from it join automatically. */
 	projectPath?: string | null;
+	/** Collapsed to its label; cards hidden. */
+	collapsed?: boolean;
 }
 
 export const MAX_TITLE_LENGTH = 120;
@@ -114,6 +116,7 @@ export interface Zone {
 	width: number;
 	height: number;
 	projectPath: string | null;
+	collapsed: boolean;
 }
 
 export interface Tag {

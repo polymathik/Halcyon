@@ -6,12 +6,16 @@
 		zone,
 		count,
 		drop = false,
+		collapsedHeight = 40,
+		collapsedWidth = 240,
 		renaming = false,
 		onrename
 	}: {
 		zone: Zone;
 		count: number;
 		drop?: boolean;
+		collapsedHeight?: number;
+		collapsedWidth?: number;
 		renaming?: boolean;
 		/** Called with the new name, or null when renaming is cancelled. */
 		onrename: (name: string | null) => void;
@@ -36,13 +40,23 @@
 <div
 	class="hc-zone"
 	class:is-drop={drop}
+	class:collapsed={zone.collapsed}
 	data-zone={zone.id}
 	data-c={zone.color}
 	style:transform="translate({zone.x}px, {zone.y}px)"
-	style:width="{zone.width}px"
-	style:height="{zone.height}px"
+	style:width="{zone.collapsed ? Math.min(zone.width, collapsedWidth) : zone.width}px"
+	style:height="{zone.collapsed ? collapsedHeight : zone.height}px"
 >
-	<div class="hc-zone__label" title="Drag to move · double-click to rename">
+	<div class="hc-zone__label" title={zone.collapsed ? `${count} hidden · drag to move · double-click to rename` : 'Drag to move · double-click to rename'}>
+		<button
+			class="chev"
+			data-action="toggle-zone"
+			aria-expanded={!zone.collapsed}
+			aria-label={zone.collapsed ? `Expand ${zone.name}` : `Collapse ${zone.name}`}
+			title={zone.collapsed ? 'Expand' : 'Collapse to label'}
+		>
+			<Icon name="chevron" size={12} />
+		</button>
 		{#if renaming}
 			<input
 				bind:this={input}
@@ -71,7 +85,7 @@
 			<Icon name="x" />
 		</button>
 	</div>
-	<div class="hc-zone__handle" title="Resize"></div>
+	{#if !zone.collapsed}<div class="hc-zone__handle" title="Resize"></div>{/if}
 </div>
 
 <style>
@@ -91,6 +105,35 @@
 	.tools .hc-iconbtn {
 		width: 24px;
 		height: 24px;
+	}
+	/* Collapsed: just the label row, cards hidden. */
+	.hc-zone.collapsed {
+		background: color-mix(in srgb, var(--zc, var(--zone-slate)) 10%, var(--surface));
+	}
+	.hc-zone.collapsed .hc-zone__count {
+		color: var(--ink-muted);
+	}
+	.chev {
+		all: unset;
+		display: inline-grid;
+		place-items: center;
+		width: 16px;
+		height: 16px;
+		margin: 0 -2px 0 -4px;
+		border-radius: 4px;
+		color: var(--ink-muted);
+		cursor: pointer;
+		transition: transform var(--dur-fast) var(--ease-out);
+	}
+	.chev:hover {
+		background: var(--surface-hover);
+		color: var(--ink);
+	}
+	.chev:focus-visible {
+		outline: 2px solid var(--accent);
+	}
+	.hc-zone.collapsed .chev {
+		transform: rotate(-90deg);
 	}
 	/* Height follows the cards; the handle sets width (columns). */
 	.hc-zone__handle {

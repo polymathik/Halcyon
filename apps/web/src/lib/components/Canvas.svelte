@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { Session, Zone as ZoneModel } from '@halcyon/core';
-	import type { SvelteMap } from 'svelte/reactivity';
+	import type { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import {
 		bounds,
 		CARD_HEIGHT,
 		CARD_HEIGHT_TAGGED,
 		CARD_WIDTH,
 		centreOn,
+		COLLAPSED_ZONE_HEIGHT,
+		COLLAPSED_ZONE_WIDTH,
 		COMPACT_BELOW,
 		contains,
 		fitCamera,
@@ -44,6 +46,8 @@
 		renamingSession: string | null;
 		filter: FilterView | null;
 		selectedId: string | null;
+		/** Multi-selection (Shift/⌘-click, Shift-drag marquee). */
+		multi: SvelteSet<string>;
 		renamingZone: number | null;
 		sideOpen: boolean;
 		now: number;
@@ -51,6 +55,11 @@
 		scrollZooms: boolean;
 		gridOn: boolean;
 		onselect: (id: string | null) => void;
+		/** Change the multi-selection: toggle one card, add several, or replace it. */
+		onmulti: (ids: string[], mode: 'toggle' | 'add' | 'set') => void;
+		/** Several selected cards were dragged together and dropped at `pointer`. */
+		ongroupmoved: (ids: string[], zoneId: number | null, pointer: Point) => void;
+		ontogglezone: (zoneId: number) => void;
 		/** A card was dropped at `position`; `zoneId` is the zone under the pointer (null for open canvas). */
 		onmoved: (id: string, position: Point, zoneId: number | null, previousZone: number | null) => void;
 		/** A zone's width changed during a resize; the page re-lays out its cards. */
@@ -77,6 +86,7 @@
 		renamingSession,
 		filter,
 		selectedId,
+		multi,
 		renamingZone,
 		sideOpen,
 		now,
@@ -84,6 +94,9 @@
 		scrollZooms,
 		gridOn,
 		onselect,
+		onmulti,
+		ongroupmoved,
+		ontogglezone,
 		onmoved,
 		onzonereflow,
 		onrenamesessionstart,
@@ -227,14 +240,20 @@
 			if (!p) return [];
 			const tags = tagsOf.get(session.id) ?? [];
 			const match = !filter || filter.matches.has(session.id);
-			return [{ session, x: p.x, y: p.y, tags, match }];
+			const zoneId = zoneOf.get(session.id) ?? null;
+			const folded = zoneId !== null && !!zones.get(zoneId)?.collapsed;
+			return [{ session, x: p.x, y: p.y, tags, match, folded }];
 		})
 	);
 	const cardHeight = (id: string) => ((tagsOf.get(id)?.length ?? 0) > 0 ? CARD_HEIGHT_TAGGED : CARD_HEIGHT);
-	const visible = $derived(placed.filter((item) => item.match || filter?.mode !== 'only'));
+	const visible = $derived(placed.filter((item) => !item.folded && (item.match || filter?.mode !== 'only')));
 	const boxes = $derived(visible.map(({ session, x, y }) => ({ id: session.id, x, y, w: CARD_WIDTH, h: cardHeight(session.id) })));
 	const zoneList = $derived([...zones.values()]);
-	const zoneBox = (z: ZoneModel): Box => ({ x: z.x, y: z.y, w: z.width, h: z.height });
+	/** The box a zone occupies on screen: only its label row when collapsed. */
+	const zoneBox = (z: ZoneModel): Box =>
+		z.collapsed
+			? { x: z.x, y: z.y, w: Math.min(z.width, COLLAPSED_ZONE_WIDTH), h: COLLAPSED_ZONE_HEIGHT }
+			: { x: z.x, y: z.y, w: z.width, h: z.height };
 	const memberCount = $derived.by(() => {
 		const present = new Set<string>(sessions.map((s) => s.id));
 		const counts = new Map<number, number>();
@@ -299,11 +318,15 @@
 	// ---------- pointer: pan, drag cards, move/resize zones ----------
 	type Action =
 		| { kind: 'pan'; sx: number; sy: number; cx: number; cy: number; moved: boolean }
-		| { kind: 'card'; id: string; ox: number; oy: number; sx: number; sy: number; moved: boolean }
+		| { kind: 'card'; id: string; ox: number; oy: number; sx: number; sy: number; moved: boolean; modifier: boolean }
+		| { kind: 'group'; id: string; start: Point; origins: [string, Point][]; sx: number; sy: number; moved: boolean; modifier: boolean }
+		| { kind: 'marquee'; start: Point; sx: number; sy: number; moved: boolean }
 		| { kind: 'zone'; id: number; sx: number; sy: number; zx: number; zy: number; members: [string, Point][]; moved: boolean }
 		| { kind: 'resize'; id: number; sx: number; sy: number; w: number; h: number; moved: boolean };
 	let action: Action | null = null;
-	let dragId = $state<string | null>(null);
+	let dragIds = $state<Set<string>>(new Set());
+	/** Marquee rectangle in viewport pixels while Shift-dragging. */
+	let marquee = $state<Box | null>(null);
 	let dropZone = $state<number | null>(null);
 	let panning = $state(false);
 	let spaceHeld = $state(false);
@@ -332,6 +355,14 @@
 			const id = Number(zoneEl.dataset.zone);
 			if (onMenu.dataset.action === 'delete-zone') onzonedelete(id);
 			else if (onMenu.dataset.action === 'rename-zone') onzonerenamestart(id);
+			else if (onMenu.dataset.action === 'toggle-zone') ontogglezone(id);
+			return;
+		}
+		// Shift-drag on empty canvas draws a selection marquee.
+		if (event.button === 0 && event.shiftKey && !spaceHeld && !card && !onLabel && !onHandle) {
+			const l = local(event);
+			action = { kind: 'marquee', start: l, sx: event.clientX, sy: event.clientY, moved: false };
+			vp.setPointerCapture(event.pointerId);
 			return;
 		}
 		// Empty canvas or a zone body pans; so do the middle button and Space.
@@ -345,11 +376,21 @@
 		}
 		if (event.button !== 0) return;
 		const w = toWorld(current(), local(event));
+		const modifier = event.shiftKey || event.metaKey || event.ctrlKey;
 		if (card) {
 			const id = card.dataset.id!;
 			const p = positions.get(id);
 			if (!p) return;
-			action = { kind: 'card', id, ox: w.x - p.x, oy: w.y - p.y, sx: event.clientX, sy: event.clientY, moved: false };
+			// Dragging any selected card moves the whole selection.
+			if (multi.has(id) && multi.size > 1) {
+				const origins = [...multi].flatMap((m) => {
+					const q = positions.get(m);
+					return q && boxes.some((b) => b.id === m) ? [[m, { ...q }] as [string, Point]] : [];
+				});
+				action = { kind: 'group', id, start: w, origins, sx: event.clientX, sy: event.clientY, moved: false, modifier };
+			} else {
+				action = { kind: 'card', id, ox: w.x - p.x, oy: w.y - p.y, sx: event.clientX, sy: event.clientY, moved: false, modifier };
+			}
 		} else if (zoneEl) {
 			const id = Number(zoneEl.dataset.zone);
 			const zone = zones.get(id);
@@ -382,10 +423,30 @@
 			setCam({ ...current(), x: action.cx + dx, y: action.cy + dy });
 			return;
 		}
+		if (action.kind === 'marquee') {
+			if (Math.abs(dx) + Math.abs(dy) > 3) action.moved = true;
+			const l = local(event);
+			marquee = {
+				x: Math.min(action.start.x, l.x),
+				y: Math.min(action.start.y, l.y),
+				w: Math.abs(l.x - action.start.x),
+				h: Math.abs(l.y - action.start.y)
+			};
+			return;
+		}
 		if (!action.moved) {
 			if (Math.abs(dx) + Math.abs(dy) < 4) return;
 			action.moved = true;
-			if (action.kind === 'card') dragId = action.id;
+			if (action.kind === 'card') dragIds = new Set([action.id]);
+			if (action.kind === 'group') dragIds = new Set(action.origins.map(([id]) => id));
+		}
+		if (action.kind === 'group') {
+			const w = toWorld(current(), local(event));
+			const mx = Math.round(w.x - action.start.x);
+			const my = Math.round(w.y - action.start.y);
+			for (const [id, p] of action.origins) positions.set(id, { x: p.x + mx, y: p.y + my });
+			dropZone = zoneAt(w)?.id ?? null;
+			return;
 		}
 		const k = 1 / current().z;
 		// Drags track the pointer on the same frame: no easing.
@@ -437,16 +498,46 @@
 			}
 			return;
 		}
+		if (a.kind === 'marquee') {
+			const box = marquee;
+			marquee = null;
+			if (!box || !a.moved) return;
+			const c = current();
+			const world = { x: (box.x - c.x) / c.z, y: (box.y - c.y) / c.z, w: box.w / c.z, h: box.h / c.z };
+			const hits = boxes.filter((b) => b.x < world.x + world.w && world.x < b.x + b.w && b.y < world.y + world.h && world.y < b.y + b.h);
+			onmulti(
+				hits.map((b) => b.id),
+				'add'
+			);
+			return;
+		}
+		if (a.kind === 'group') {
+			dragIds = new Set();
+			const target = dropZone;
+			dropZone = null;
+			if (!a.moved) {
+				if (tap && a.modifier) onmulti([a.id], 'toggle');
+				else if (tap) select(a.id);
+				return;
+			}
+			ongroupmoved(
+				a.origins.map(([id]) => id),
+				target,
+				toWorld(current(), local(event))
+			);
+			return;
+		}
 		if (a.kind === 'zone' || a.kind === 'resize') {
 			if (a.moved) onzonechanged(a.id, true);
 			else if (a.kind === 'zone' && tap && isDoubleTap(`zone:${a.id}`, event)) onzonerenamestart(a.id);
 			return;
 		}
-		dragId = null;
+		dragIds = new Set();
 		const target = dropZone;
 		dropZone = null;
 		if (!a.moved) {
-			if (tap && isDoubleTap(`card:${a.id}`, event)) onrenamesessionstart(a.id);
+			if (tap && a.modifier) onmulti([a.id], 'toggle');
+			else if (tap && isDoubleTap(`card:${a.id}`, event)) onrenamesessionstart(a.id);
 			else select(a.id);
 			return;
 		}
@@ -523,6 +614,14 @@
 		if (isTyping(event.target)) return;
 		if (event.key === 'Escape') {
 			onescape();
+			return;
+		}
+		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && !inPanel(event.target)) {
+			event.preventDefault();
+			onmulti(
+				boxes.map((b) => b.id),
+				'set'
+			);
 			return;
 		}
 		if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -603,7 +702,7 @@
 	bind:this={vp}
 	bind:clientWidth={vw}
 	bind:clientHeight={vh}
-	aria-label="Session canvas. Arrow keys move between cards, plus and minus zoom, 1 fits all, N adds a zone, slash filters."
+	aria-label="Session canvas. Arrow keys move between cards, plus and minus zoom, 1 fits all, N adds a zone, slash filters, Shift-click or Shift-drag selects several."
 	{onpointerdown}
 	{onpointermove}
 	onpointerup={endPointer}
@@ -616,6 +715,8 @@
 				{zone}
 				count={memberCount.get(zone.id) ?? 0}
 				drop={dropZone === zone.id}
+				collapsedHeight={COLLAPSED_ZONE_HEIGHT}
+				collapsedWidth={COLLAPSED_ZONE_WIDTH}
 				renaming={renamingZone === zone.id}
 				onrename={(name) => onzonerename(zone.id, name)}
 			/>
@@ -634,12 +735,16 @@
 				activeTags={filter?.tags ?? []}
 				highlighted={!!filter && item.match && filter.mode === 'highlight'}
 				dimmed={!!filter && !item.match && filter.mode === 'highlight'}
-				hidden={!!filter && !item.match && filter.mode === 'only' && item.session.id !== selectedId}
-				selected={item.session.id === selectedId}
-				dragging={item.session.id === dragId}
+				hidden={item.folded || (!!filter && !item.match && filter.mode === 'only' && item.session.id !== selectedId)}
+				selected={item.session.id === selectedId || multi.has(item.session.id)}
+				dragging={dragIds.has(item.session.id)}
 			/>
 		{/each}
 	</div>
+
+	{#if marquee}
+		<div class="marquee" style:left="{marquee.x}px" style:top="{marquee.y}px" style:width="{marquee.w}px" style:height="{marquee.h}px"></div>
+	{/if}
 
 	<div class="chrome tools hc-float hc-toolbar">
 		<button class="hc-iconbtn" onclick={() => onnewzone(viewCentre())} aria-label="New zone" title="New zone (N)"><Icon name="zone" /></button>
@@ -655,7 +760,7 @@
 
 	{#if vw > 760 && (boxes.length || zoneList.length)}
 		<div class="chrome mini" class:shifted={sideOpen}>
-			<Minimap cards={boxes} zones={zoneList} {selectedId} dimmed={filter?.mode === 'highlight' ? filter.matches : null} camera={cam} viewport={{ w: vw, h: vh }} onjump={jump} />
+			<Minimap cards={boxes} zones={zoneList} {selectedId} selected={multi} dimmed={filter?.mode === 'highlight' ? filter.matches : null} camera={cam} viewport={{ w: vw, h: vh }} onjump={jump} />
 		</div>
 	{/if}
 </main>
@@ -693,6 +798,14 @@
 	.chrome {
 		position: absolute;
 		z-index: var(--z-chrome);
+	}
+	.marquee {
+		position: absolute;
+		z-index: var(--z-drag);
+		background: var(--scrim);
+		border: 1px solid var(--accent);
+		border-radius: 2px;
+		pointer-events: none;
 	}
 	.tools {
 		left: var(--space-3);

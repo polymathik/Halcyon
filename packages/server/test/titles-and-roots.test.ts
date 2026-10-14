@@ -32,11 +32,11 @@ function setup(projectPath: string | null = null) {
 	return { call, workspaces, discovery };
 }
 
-describe('schema v2', () => {
-	it('migrates to version 2 and keeps v1 data', () => {
+describe('schema v3', () => {
+	it('migrates to the latest version', () => {
 		const db = memoryDb();
-		expect(migrate(db)).toBe(2);
-		expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+		expect(migrate(db)).toBe(3);
+		expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
 	});
 });
 
@@ -64,6 +64,10 @@ describe('project zones', () => {
 		const cleared = await (await call('PATCH', `/api/workspace/zones/${zone.id}`, { projectPath: null })).json();
 		expect(cleared.projectPath).toBeNull();
 		expect((await call('PATCH', `/api/workspace/zones/${zone.id}`, { projectPath: '' })).status).toBe(400);
+		expect(zone.collapsed).toBe(false);
+		const collapsed = await (await call('PATCH', `/api/workspace/zones/${zone.id}`, { collapsed: true })).json();
+		expect(collapsed.collapsed).toBe(true);
+		expect((await call('PATCH', `/api/workspace/zones/${zone.id}`, { collapsed: 'yes' })).status).toBe(400);
 	});
 });
 

@@ -96,6 +96,10 @@ const MIGRATIONS: string[] = [
 	);
 	-- A zone created for a project folder; new sessions from it join the zone.
 	ALTER TABLE zones ADD COLUMN project_path TEXT;
+	`,
+	`
+	-- A collapsed zone shows only its label; its cards are hidden, not moved.
+	ALTER TABLE zones ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
 	`
 ];
 

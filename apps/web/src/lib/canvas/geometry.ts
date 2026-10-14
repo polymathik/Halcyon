@@ -165,3 +165,8 @@ export function zoneGrid(origin: Point, count: number, columns: number, gap = 16
 		h: Math.max(MIN_ZONE_HEIGHT, ZONE_LABEL_SPACE + ZONE_PAD + rows * (CARD_HEIGHT + 24) + (rows - 1) * gap)
 	};
 }
+
+/** Height of a zone collapsed to its label. */
+export const COLLAPSED_ZONE_HEIGHT = 40;
+/** Width of a zone collapsed to its label (never wider than the zone itself). */
+export const COLLAPSED_ZONE_WIDTH = 240;

@@ -6,6 +6,7 @@
 		cards,
 		zones = [],
 		dimmed = null,
+		selected = null,
 		selectedId,
 		camera,
 		viewport,
@@ -15,6 +16,8 @@
 		zones?: Zone[];
 		/** When set, cards not in this set are drawn faded (Highlight filter). */
 		dimmed?: Set<string> | null;
+		/** Multi-selection, drawn like the selected card. */
+		selected?: Set<string> | null;
 		selectedId: string | null;
 		camera: Camera;
 		/** Visible canvas size in px. */
@@ -33,7 +36,7 @@
 		h: viewport.h / camera.z
 	});
 	const map = $derived.by(() => {
-		const b = bounds([...cards, ...zones.map((z) => ({ x: z.x, y: z.y, w: z.width, h: z.height })), view]) ?? { x: 0, y: 0, w: 1, h: 1 };
+		const b = bounds([...cards, ...zones.map((z) => ({ x: z.x, y: z.y, w: z.collapsed ? Math.min(z.width, 240) : z.width, h: z.collapsed ? 40 : z.height })), view]) ?? { x: 0, y: 0, w: 1, h: 1 };
 		const k = Math.min((W - PAD * 2) / b.w, (H - PAD * 2) / b.h);
 		return { k, ox: PAD + (W - PAD * 2 - b.w * k) / 2 - b.x * k, oy: PAD + (H - PAD * 2 - b.h * k) / 2 - b.y * k };
 	});
@@ -54,7 +57,7 @@
 	<svg width={W} height={H} role="img" aria-label="Minimap" onpointerdown={jump}>
 		{#each zones as zone (zone.id)}
 			<rect
-				{...r({ x: zone.x, y: zone.y, w: zone.width, h: zone.height })}
+				{...r({ x: zone.x, y: zone.y, w: zone.collapsed ? Math.min(zone.width, 240) : zone.width, h: zone.collapsed ? 40 : zone.height })}
 				rx="2"
 				class="zone"
 				style:fill="var(--zone-{zone.color}-fill)"
@@ -62,7 +65,7 @@
 			/>
 		{/each}
 		{#each cards as card (card.id)}
-			<rect {...r(card)} rx="1.5" class="card" class:sel={card.id === selectedId} class:faded={dimmed !== null && !dimmed.has(card.id)} />
+			<rect {...r(card)} rx="1.5" class="card" class:sel={card.id === selectedId || !!selected?.has(card.id)} class:faded={dimmed !== null && !dimmed.has(card.id)} />
 		{/each}
 		<rect {...r(view)} rx="1.5" class="view" />
 	</svg>

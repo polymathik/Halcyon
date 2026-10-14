@@ -290,6 +290,10 @@ function parseZone(body: Record<string, unknown> | null, partial: boolean): Part
 			out[key] = body[key];
 		}
 	}
+	if (has('collapsed')) {
+		if (typeof body.collapsed !== 'boolean') return null;
+		out.collapsed = body.collapsed;
+	}
 	if (has('projectPath')) {
 		const value = body.projectPath;
 		if (value !== null && (typeof value !== 'string' || value.length === 0 || value.length > 4096)) return null;
