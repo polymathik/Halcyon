@@ -12,12 +12,15 @@ import type {
 	PreviewMessage,
 	PreviewOptions,
 	ScanWarning,
-	Session
+	Session,
+	LiveContext,
+	ProviderLive
 } from '@halcyon/core';
 import { isValidNativeId, toSessionId } from '@halcyon/core';
 import { assertInside } from '../preview.js';
 import { previewClaudeTranscript } from './preview.js';
 import { parseClaudeTranscript } from './transcript.js';
+import { claudeLive } from './live.js';
 
 const PARSER_VERSION = 1;
 const TRANSCRIPT_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
@@ -145,6 +148,10 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
 		async preview(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]> {
 			assertInside(projectsDir, sourcePath);
 			return previewClaudeTranscript(sourcePath, options);
+		},
+
+		live(context: LiveContext): Promise<ProviderLive> {
+			return claudeLive(root, context);
 		}
 	};
 }

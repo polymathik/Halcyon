@@ -9,6 +9,7 @@ import {
 	parseSessionId,
 	ZONE_COLORS,
 	type ApiError,
+	type LiveResponse,
 	type SavedFilter,
 	type SessionId,
 	type SessionCommandResponse,
@@ -21,6 +22,7 @@ import { displayCommand, NativeActions } from '../actions/native.js';
 import { NotFoundError, type PlacementInput, type WorkspaceStore } from '../db/workspace-store.js';
 import { PREVIEW_LIMIT, type DiscoveryService } from '../discovery/discovery-service.js';
 import { contentSecurityPolicy } from './csp.js';
+import type { LiveService } from '../live/live-service.js';
 
 /** Older snapshots are served immediately while a background rescan runs. */
 const SNAPSHOT_MAX_AGE_MS = 10_000;
@@ -38,9 +40,11 @@ export interface AppOptions {
 	webRoot: string | null;
 	/** Native actions; tests inject a fake launcher. */
 	actions?: NativeActions;
+	/** Live session state; omitted means every provider reports none. */
+	live?: LiveService;
 }
 
-export function createApp({ discovery, workspaces, allowedHosts, webRoot, actions = new NativeActions() }: AppOptions): Hono {
+export function createApp({ discovery, workspaces, allowedHosts, webRoot, actions = new NativeActions(), live }: AppOptions): Hono {
 	const app = new Hono();
 	const hosts = new Set(allowedHosts.map((host) => host.toLowerCase()));
 	const origins = new Set(allowedHosts.map((host) => `http://${host.toLowerCase()}`));
@@ -77,6 +81,11 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 	// ---------- sessions ----------
 	api.get('/sessions', async (c) => c.json(await discovery.current(SNAPSHOT_MAX_AGE_MS)));
 	api.post('/sessions/refresh', async (c) => c.json(await discovery.refresh()));
+	api.get('/live', async (c) => {
+		c.header('Cache-Control', 'no-store');
+		if (!live) return c.json<LiveResponse>({ checkedAt: new Date().toISOString(), providers: [], sessions: [] });
+		return c.json(await live.current());
+	});
 
 	api.get('/sessions/:sessionId/preview', async (c) => {
 		// Transcript text: never cache in the browser, never log.

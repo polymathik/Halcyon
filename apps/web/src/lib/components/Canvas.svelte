@@ -23,6 +23,7 @@
 		type Point
 	} from '#lib/canvas/geometry.js';
 	import { zoneWidthFor } from '#lib/canvas/arrange.js';
+	import type { CardStatus } from '#lib/live.js';
 	import Icon from './Icon.svelte';
 	import Minimap from './Minimap.svelte';
 	import SessionCard from './SessionCard.svelte';
@@ -39,6 +40,8 @@
 		sessions: Session[];
 		/** Archived sessions (drawn dimmed when shown). */
 		archived: Set<string>;
+		/** Live status per session; absent when the provider can't tell. */
+		live: Map<string, CardStatus>;
 		positions: SvelteMap<string, Point>;
 		zones: SvelteMap<number, ZoneModel>;
 		zoneOf: SvelteMap<string, number | null>;
@@ -81,6 +84,7 @@
 	let {
 		sessions,
 		archived,
+		live,
 		positions,
 		zones,
 		zoneOf,
@@ -742,6 +746,7 @@
 				selected={item.session.id === selectedId || multi.has(item.session.id)}
 				dragging={dragIds.has(item.session.id)}
 				isArchived={archived.has(item.session.id)}
+				status={live.get(item.session.id) ?? null}
 			/>
 		{/each}
 	</div>

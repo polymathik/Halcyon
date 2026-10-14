@@ -95,6 +95,17 @@ export class DiscoveryService {
 		}
 	}
 
+	/** IDs in the latest snapshot (empty before the first scan). */
+	knownIds(): Set<string> {
+		return new Set(this.snapshot?.sessions.map((session) => session.id) ?? []);
+	}
+
+	/** The present session discovered from a transcript path, if any. */
+	sessionForSource(path: string): Session['id'] | null {
+		const id = this.cache.sessionForSource(path);
+		return id && this.snapshot?.sessions.some((session) => session.id === id) ? id : null;
+	}
+
 	/** A present session and its provider's resume command (null when unsupported). */
 	async session(sessionId: Session['id']): Promise<{ session: Session; command: NativeCommand | null } | null> {
 		const snapshot = await this.current();

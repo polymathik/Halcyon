@@ -1,5 +1,5 @@
-import type { ProviderId, Session, SessionId } from './session.js';
-import type { PreviewMessage, ScanWarning } from './adapter.js';
+import type { LiveState, ProviderId, Session, SessionId } from './session.js';
+import type { LiveDetail, PreviewMessage, ScanWarning } from './adapter.js';
 
 /**
  * Per-provider health. "No sessions found" is `ok` with `sessionCount: 0`,
@@ -25,6 +25,20 @@ export interface ProviderStatus {
 export interface SessionsResponse {
 	sessions: Session[];
 	providers: ProviderStatus[];
+}
+
+/**
+ * `GET /api/live`. Lists running sessions only. For a provider whose signal is
+ * `ok`, a session missing from `sessions` is closed; otherwise its state is
+ * unknown and the UI shows none.
+ */
+export interface LiveResponse {
+	checkedAt: string;
+	providers: (
+		| { provider: ProviderId; state: 'ok'; detail: LiveDetail }
+		| { provider: ProviderId; state: 'unavailable' | 'error'; reason: string }
+	)[];
+	sessions: { sessionId: SessionId; state: LiveState; since: string | null }[];
 }
 
 /** `GET /api/sessions/:id/preview`. Served with `Cache-Control: no-store`. */

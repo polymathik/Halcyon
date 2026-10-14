@@ -1,4 +1,5 @@
 import type {
+	LiveResponse,
 	PlacementBatch,
 	SavedFilter,
 	SessionCommandResponse,
@@ -42,6 +43,7 @@ const sessionPath = (id: string, rest: string) => `/api/sessions/${encodeURIComp
 
 export const api = {
 	sessions: (fetcher?: typeof fetch) => getJson<SessionsResponse>('/api/sessions', fetcher),
+	live: (signal?: AbortSignal) => getJson<LiveResponse>('/api/live', fetch, signal),
 	workspace: (fetcher?: typeof fetch) => getJson<WorkspaceResponse>('/api/workspace', fetcher),
 	preview: (sessionId: string, signal?: AbortSignal) => getJson<SessionPreviewResponse>(sessionPath(sessionId, 'preview'), fetch, signal),
 	command: (sessionId: string, signal?: AbortSignal) => getJson<SessionCommandResponse>(sessionPath(sessionId, 'command'), fetch, signal),

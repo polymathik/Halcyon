@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		ZONE_COLORS,
+		type LiveResponse,
 		type ProviderStatus,
 		type Session,
 		type TagsResponse,
@@ -39,6 +40,8 @@
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import TagFilter from '#lib/components/TagFilter.svelte';
 	import { displayTitle, plural, providerMonogram } from '#lib/format.js';
+	import { isRunning, statusMap } from '#lib/live.js';
+	import LiveStatus from '#lib/components/LiveStatus.svelte';
 	import { readPref, writePref } from '#lib/prefs.js';
 	import { currentTheme, setTheme, type Theme } from '#lib/theme.js';
 	import type { PageProps } from './$types';
@@ -60,6 +63,43 @@
 		return () => {
 			clearInterval(timer);
 			document.removeEventListener('visibilitychange', tick);
+		};
+	});
+
+	// ---------- live status ----------
+	// Each provider's own signal (Claude Code's session registry, Codex's open files), polled while visible.
+	const LIVE_MS = 3_000;
+	let liveData = $state<LiveResponse | null>(null);
+	let lastLiveReload = 0;
+	$effect(() => {
+		let stopped = false;
+		let controller: AbortController | null = null;
+		const check = async () => {
+			if (stopped || document.visibilityState !== 'visible' || controller) return;
+			controller = new AbortController();
+			try {
+				const next = await api.live(controller.signal);
+				if (stopped) return;
+				liveData = next;
+				// A session that just started isn't on the canvas yet: fetch it (the server rescans).
+				const known = new Set(allSessions.map((s) => s.id as string));
+				if (next.sessions.some((s) => !known.has(s.sessionId)) && Date.now() - lastLiveReload > 10_000) {
+					lastLiveReload = Date.now();
+					setTimeout(() => void invalidateAll(), 1_500);
+				}
+			} catch {
+				// Leave the last known state; the next tick retries.
+			} finally {
+				controller = null;
+			}
+		};
+		void check();
+		const timer = setInterval(check, LIVE_MS);
+		document.addEventListener('visibilitychange', check);
+		return () => {
+			stopped = true;
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', check);
 		};
 	});
 
@@ -119,6 +159,24 @@
 	let showArchived = $state(readPref('showArchived', false));
 	const sessions = $derived(showArchived ? allSessions : allSessions.filter((s) => !archived.has(s.id)));
 	const problems = $derived(providers.filter((p) => p.health.state !== 'ok'));
+	const live = $derived(statusMap(allSessions, liveData));
+	const liveCounts = $derived.by(() => {
+		let running = 0;
+		let waiting = 0;
+		let working = 0;
+		for (const s of sessions) {
+			const status = live.get(s.id);
+			if (isRunning(status)) running++;
+			if (status === 'waiting') waiting++;
+			if (status === 'working') working++;
+		}
+		return { running, waiting, working, reporting: live.size > 0 };
+	});
+	let liveOnly = $state(false);
+	$effect(() => {
+		const base = 'Halcyon';
+		document.title = liveCounts.waiting ? `(${liveCounts.waiting}) ${base}` : base;
+	});
 	const agentsFound = $derived(providers.filter((p) => p.health.state === 'ok').length);
 
 	// Workspace layout: loaded once, then owned here. Polling only refreshes sessions.
@@ -348,9 +406,10 @@
 	const nameOf = (s: Session) => titlesOf.get(s.id) ?? displayTitle(s);
 	const filterView = $derived.by(() => {
 		const text = filterText.trim().replace(/^#/, '').toLowerCase();
-		if (filterTags.length === 0 && !text) return null;
+		if (filterTags.length === 0 && !text && !liveOnly) return null;
 		const matches = new Set<string>();
 		for (const s of sessions) {
+			if (liveOnly && !isRunning(live.get(s.id))) continue;
 			const tags = tagsOf.get(s.id) ?? [];
 			if (filterTags.length && !tags.some((t) => filterTags.includes(t))) continue;
 			if (text) {
@@ -912,6 +971,7 @@
 			bind:this={canvas}
 			{sessions}
 			{archived}
+			{live}
 			{positions}
 			{zones}
 			{zoneOf}
@@ -999,6 +1059,22 @@
 				onexit={() => {}}
 			/>
 			<div class="hc-spacer"></div>
+		{/if}
+
+		{#if workspaceReady && liveCounts.reporting}
+			<button
+				class="hc-btn hc-btn--ghost hc-btn--sm running"
+				class:on={liveOnly}
+				aria-pressed={liveOnly}
+				onclick={() => (liveOnly = !liveOnly)}
+				title={liveOnly ? 'Show all sessions' : 'Show only sessions open in a terminal now'}
+			>
+				{#if liveCounts.waiting}
+					<LiveStatus status="waiting" label={`${liveCounts.waiting} need${liveCounts.waiting === 1 ? 's' : ''} input`} />
+				{/if}
+				<LiveStatus status={liveCounts.working ? 'working' : liveCounts.running ? 'open' : 'closed'} label={`${liveCounts.running} open`} />
+			</button>
+			<span class="hc-sep providers-sep"></span>
 		{/if}
 
 		{#if providers.length}
@@ -1093,6 +1169,7 @@
 				{now}
 				name={titlesOf.get(selected.id) ?? null}
 				isArchived={archived.has(selected.id)}
+				status={live.get(selected.id) ?? null}
 				onarchive={(value) => setArchived([selected.id], value)}
 				onrename={(title) => renameSession(selected.id, title)}
 				tags={tagsOf.get(selected.id) ?? []}
@@ -1347,6 +1424,13 @@
 		border: 0;
 	}
 
+	.running {
+		gap: 10px;
+	}
+	.running.on {
+		background: var(--accent-soft);
+		outline: 1px solid var(--accent);
+	}
 	@media (max-width: 760px) {
 		.side {
 			left: 8px;
