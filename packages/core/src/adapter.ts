@@ -1,4 +1,4 @@
-import type { ProviderId, Session } from './session.js';
+import type { LiveState, ProviderId, Session } from './session.js';
 
 /**
  * Identity of the file a session was parsed from. Adapters use it to skip
@@ -79,6 +79,41 @@ export interface PreviewOptions {
 	signal?: AbortSignal;
 }
 
+/** One running session, as reported by a provider's live signal. */
+export interface LiveEntry {
+	/** The provider's own session ID, when the signal names it. */
+	nativeId: string | null;
+	/** The transcript the session writes to, when the signal names that instead. */
+	sourcePath: string | null;
+	state: LiveState;
+	/** When the provider last changed this state (ISO 8601), if it says. */
+	since: string | null;
+}
+
+/**
+ * What a provider's live signal can tell: `status` reports working / waiting /
+ * idle; `presence` only reports that a session is open.
+ */
+export type LiveDetail = 'status' | 'presence';
+
+export type ProviderLive =
+	| { state: 'ok'; detail: LiveDetail; entries: LiveEntry[] }
+	| { state: 'unavailable'; reason: string }
+	| { state: 'error'; message: string };
+
+/** Process facts the live checks need. Injected so tests never touch real processes. */
+export interface ProcessProbe {
+	/** Running processes: pid, executable base name, and start time (epoch ms) when known. */
+	processes(): Promise<{ pid: number; name: string; startedAtMs: number | null }[] | null>;
+	/** Files the given processes hold open, or null when that cannot be listed here. */
+	openFiles(pids: number[]): Promise<string[] | null>;
+}
+
+export interface LiveContext {
+	probe: ProcessProbe;
+	signal?: AbortSignal;
+}
+
 export interface ProviderAdapter {
 	readonly provider: ProviderId;
 	readonly displayName: string;
@@ -96,4 +131,10 @@ export interface ProviderAdapter {
 	 * report the preview as unsupported.
 	 */
 	preview?(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]>;
+	/**
+	 * Running sessions, from a signal the provider publishes. Reads only
+	 * process facts and status metadata, never transcript content. Optional:
+	 * without it the provider's sessions show no live state.
+	 */
+	live?(context: LiveContext): Promise<ProviderLive>;
 }

@@ -62,6 +62,9 @@ export class WorkspaceStore {
 			zones,
 			...this.tagState(),
 			titles,
+			archived: (this.db.prepare('SELECT session_id FROM session_archive ORDER BY session_id').all() as { session_id: SessionId }[]).map(
+				(row) => row.session_id
+			),
 			filter: workspace.filters_json ? (JSON.parse(workspace.filters_json) as SavedFilter) : null
 		};
 	}
@@ -171,6 +174,19 @@ export class WorkspaceStore {
 				 ON CONFLICT (session_id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at`
 			)
 			.run(sessionId, title, new Date().toISOString());
+	}
+
+	/** Archives or restores sessions in Halcyon. Provider files are never touched. */
+	setArchived(sessionIds: SessionId[], archived: boolean): void {
+		const now = new Date().toISOString();
+		const add = this.db.prepare('INSERT OR IGNORE INTO session_archive (session_id, archived_at) VALUES (?, ?)');
+		const remove = this.db.prepare('DELETE FROM session_archive WHERE session_id = ?');
+		this.transaction(() => {
+			for (const id of sessionIds) {
+				if (archived) add.run(id, now);
+				else remove.run(id);
+			}
+		});
 	}
 
 	private tagState(): TagsResponse {

@@ -1,5 +1,5 @@
-import type { ProviderId, Session, SessionId } from './session.js';
-import type { PreviewMessage, ScanWarning } from './adapter.js';
+import type { LiveState, ProviderId, Session, SessionId } from './session.js';
+import type { LiveDetail, PreviewMessage, ScanWarning } from './adapter.js';
 
 /**
  * Per-provider health. "No sessions found" is `ok` with `sessionCount: 0`,
@@ -25,6 +25,20 @@ export interface ProviderStatus {
 export interface SessionsResponse {
 	sessions: Session[];
 	providers: ProviderStatus[];
+}
+
+/**
+ * `GET /api/live`. Lists running sessions only. For a provider whose signal is
+ * `ok`, a session missing from `sessions` is closed; otherwise its state is
+ * unknown and the UI shows none.
+ */
+export interface LiveResponse {
+	checkedAt: string;
+	providers: (
+		| { provider: ProviderId; state: 'ok'; detail: LiveDetail }
+		| { provider: ProviderId; state: 'unavailable' | 'error'; reason: string }
+	)[];
+	sessions: { sessionId: SessionId; state: LiveState; since: string | null }[];
 }
 
 /** `GET /api/sessions/:id/preview`. Served with `Cache-Control: no-store`. */
@@ -70,6 +84,7 @@ export interface ZoneInput {
 }
 
 export const MAX_TITLE_LENGTH = 120;
+export const MAX_ARCHIVE_BATCH = 2_000;
 
 /** A filter saved with the workspace. Tags match any; names are normalized. */
 export interface SavedFilter {
@@ -141,6 +156,8 @@ export interface WorkspaceResponse {
 	sessionTags: { sessionId: SessionId; tagId: number }[];
 	/** Display names the user gave sessions in Halcyon. */
 	titles: { sessionId: SessionId; title: string }[];
+	/** Sessions archived in Halcyon (hidden unless "Show archived" is on). */
+	archived: SessionId[];
 	filter: SavedFilter | null;
 }
 

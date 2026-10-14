@@ -14,13 +14,16 @@ import type {
 	PreviewMessage,
 	PreviewOptions,
 	Session,
-	TitleSource
+	TitleSource,
+	LiveContext,
+	ProviderLive
 } from '@halcyon/core';
 import { isValidNativeId, toSessionId } from '@halcyon/core';
 import { parseRollout, ROLLOUT_FILE, type ExclusionReason } from './parse-rollout.js';
 import { loadSessionIndex } from './session-index.js';
 import { assertInside } from '../preview.js';
 import { previewCodexRollout } from './preview.js';
+import { codexLive } from './live.js';
 
 const PARSER_VERSION = 1;
 
@@ -264,6 +267,10 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
 		async preview(sourcePath: string, options: PreviewOptions): Promise<PreviewMessage[]> {
 			assertInside(sessionsDir, sourcePath);
 			return previewCodexRollout(sourcePath, options);
+		},
+
+		live(context: LiveContext): Promise<ProviderLive> {
+			return codexLive(root, context);
 		},
 
 		lastScanStats() {

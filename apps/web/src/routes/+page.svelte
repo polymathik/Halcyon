@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		ZONE_COLORS,
+		type LiveResponse,
 		type ProviderStatus,
 		type Session,
 		type TagsResponse,
@@ -39,6 +40,8 @@
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import TagFilter from '#lib/components/TagFilter.svelte';
 	import { displayTitle, plural, providerMonogram } from '#lib/format.js';
+	import { isRunning, statusMap } from '#lib/live.js';
+	import LiveStatus from '#lib/components/LiveStatus.svelte';
 	import { readPref, writePref } from '#lib/prefs.js';
 	import { currentTheme, setTheme, type Theme } from '#lib/theme.js';
 	import type { PageProps } from './$types';
@@ -60,6 +63,43 @@
 		return () => {
 			clearInterval(timer);
 			document.removeEventListener('visibilitychange', tick);
+		};
+	});
+
+	// ---------- live status ----------
+	// Each provider's own signal (Claude Code's session registry, Codex's open files), polled while visible.
+	const LIVE_MS = 3_000;
+	let liveData = $state<LiveResponse | null>(null);
+	let lastLiveReload = 0;
+	$effect(() => {
+		let stopped = false;
+		let controller: AbortController | null = null;
+		const check = async () => {
+			if (stopped || document.visibilityState !== 'visible' || controller) return;
+			controller = new AbortController();
+			try {
+				const next = await api.live(controller.signal);
+				if (stopped) return;
+				liveData = next;
+				// A session that just started isn't on the canvas yet: fetch it (the server rescans).
+				const known = new Set(allSessions.map((s) => s.id as string));
+				if (next.sessions.some((s) => !known.has(s.sessionId)) && Date.now() - lastLiveReload > 10_000) {
+					lastLiveReload = Date.now();
+					setTimeout(() => void invalidateAll(), 1_500);
+				}
+			} catch {
+				// Leave the last known state; the next tick retries.
+			} finally {
+				controller = null;
+			}
+		};
+		void check();
+		const timer = setInterval(check, LIVE_MS);
+		document.addEventListener('visibilitychange', check);
+		return () => {
+			stopped = true;
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', check);
 		};
 	});
 
@@ -113,8 +153,30 @@
 
 	// ---------- data ----------
 	const providers = $derived(data.sessions?.providers ?? []);
-	const sessions = $derived(data.sessions?.sessions ?? []);
+	const allSessions = $derived(data.sessions?.sessions ?? []);
+	// Archived sessions leave the canvas unless "Show archived" is on.
+	const archived = new SvelteSet<string>();
+	let showArchived = $state(readPref('showArchived', false));
+	const sessions = $derived(showArchived ? allSessions : allSessions.filter((s) => !archived.has(s.id)));
 	const problems = $derived(providers.filter((p) => p.health.state !== 'ok'));
+	const live = $derived(statusMap(allSessions, liveData));
+	const liveCounts = $derived.by(() => {
+		let running = 0;
+		let waiting = 0;
+		let working = 0;
+		for (const s of sessions) {
+			const status = live.get(s.id);
+			if (isRunning(status)) running++;
+			if (status === 'waiting') waiting++;
+			if (status === 'working') working++;
+		}
+		return { running, waiting, working, reporting: live.size > 0 };
+	});
+	let liveOnly = $state(false);
+	$effect(() => {
+		const base = 'Halcyon';
+		document.title = liveCounts.waiting ? `(${liveCounts.waiting}) ${base}` : base;
+	});
 	const agentsFound = $derived(providers.filter((p) => p.health.state === 'ok').length);
 
 	// Workspace layout: loaded once, then owned here. Polling only refreshes sessions.
@@ -147,6 +209,7 @@
 			}
 			for (const z of workspace.zones) zones.set(z.id, z);
 			for (const t of workspace.titles) titlesOf.set(t.sessionId, t.title);
+			for (const id of workspace.archived) archived.add(id);
 			applyTags(workspace);
 			if (workspace.filter) {
 				filterTags = workspace.filter.tags;
@@ -283,7 +346,7 @@
 	// so later discoveries never move existing cards.
 	$effect(() => {
 		if (!workspaceReady) return;
-		const unplaced = sessions
+		const unplaced = allSessions
 			.filter((s) => !positions.has(s.id))
 			.sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''));
 		if (unplaced.length === 0) return;
@@ -343,9 +406,10 @@
 	const nameOf = (s: Session) => titlesOf.get(s.id) ?? displayTitle(s);
 	const filterView = $derived.by(() => {
 		const text = filterText.trim().replace(/^#/, '').toLowerCase();
-		if (filterTags.length === 0 && !text) return null;
+		if (filterTags.length === 0 && !text && !liveOnly) return null;
 		const matches = new Set<string>();
 		for (const s of sessions) {
+			if (liveOnly && !isRunning(live.get(s.id))) continue;
 			const tags = tagsOf.get(s.id) ?? [];
 			if (filterTags.length && !tags.some((t) => filterTags.includes(t))) continue;
 			if (text) {
@@ -736,6 +800,66 @@
 		}
 	}
 
+	// ---------- archive ----------
+	/** Archives or restores sessions in Halcyon only; transcripts are never touched. */
+	async function setArchived(ids: string[], value: boolean, undoable = true) {
+		if (ids.length === 0) return;
+		const zonesTouched = new Set(ids.map((id) => zoneOf.get(id) ?? null).filter((z): z is number => z !== null));
+		for (const id of ids) {
+			if (value) archived.add(id);
+			else archived.delete(id);
+			multi.delete(id);
+		}
+		if (value && selectedId && ids.includes(selectedId) && !showArchived) selectedId = null;
+		// Zones close the gaps (or make room again).
+		const changed = newChanges();
+		for (const z of zonesTouched) reflowZone(z, changed);
+		if (!value && !showArchived) {
+			// Restored free cards get a free spot in case the space was taken meanwhile.
+			for (const id of ids) {
+				const p = positions.get(id);
+				if (p && (zoneOf.get(id) ?? null) === null) {
+					positions.set(id, freeSpot({ ...p, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+					changed.cards.add(id);
+				}
+			}
+		}
+		persist(changed);
+		try {
+			await api.setArchived(ids, value);
+		} catch {
+			saveFailed();
+			return;
+		}
+		if (!undoable) return;
+		const label = plural(ids.length, 'session');
+		showToast(
+			value ? `Archived ${label}${showArchived ? '' : ' · find them with Show archived'}` : `Unarchived ${label}`,
+			() => setArchived(ids, !value, false)
+		);
+	}
+
+	function toggleShowArchived() {
+		showArchived = !showArchived;
+		writePref('showArchived', showArchived);
+		menuOpen = false;
+		// Zones re-arrange with or without their archived cards; shown free cards find space.
+		queueMicrotask(() => {
+			const changed = newChanges();
+			for (const id of [...zones.keys()]) reflowZone(id, changed);
+			if (showArchived)
+				for (const id of archived) {
+					const p = positions.get(id);
+					if (p && (zoneOf.get(id) ?? null) === null) {
+						positions.set(id, freeSpot({ ...p, w: CARD_WIDTH, h: cardH(id) }, obstaclesExcept(id)));
+						changed.cards.add(id);
+					}
+				}
+			persist(changed);
+		});
+	}
+	const archivedCount = $derived(allSessions.filter((s) => archived.has(s.id)).length);
+
 	// ---------- session names ----------
 	let renamingSession = $state<string | null>(null);
 	/** Saves a Halcyon display name; empty or the original name resets it. */
@@ -817,7 +941,7 @@
 				<div class="actions"><button class="hc-btn hc-btn--primary" onclick={rescan} disabled={rescanning}>Retry</button></div>
 			</div>
 		</div>
-	{:else if data.sessions && sessions.length === 0}
+	{:else if data.sessions && allSessions.length === 0}
 		<div class="center dotted">
 			<div class="hc-empty">
 				<svg class="hc-empty__art" viewBox="0 0 120 72" aria-hidden="true">
@@ -846,6 +970,8 @@
 		<Canvas
 			bind:this={canvas}
 			{sessions}
+			{archived}
+			{live}
 			{positions}
 			{zones}
 			{zoneOf}
@@ -897,7 +1023,7 @@
 				{/each}
 				{#if !bannerDismissed}
 					<div class="hc-float hc-banner">
-						<span><b>Found {plural(agentsFound, 'agent')} · {plural(sessions.length, 'session')}.</b> <span class="muted">Group them by project, or drag cards into zones.</span></span>
+						<span><b>Found {plural(agentsFound, 'agent')} · {plural(allSessions.length, 'session')}.</b> <span class="muted">Group them by project, or drag cards into zones.</span></span>
 						{#if zones.size === 0}
 							<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={groupByProject}><Icon name="group" size={13} />Group by project</button>
 						{/if}
@@ -933,6 +1059,22 @@
 				onexit={() => {}}
 			/>
 			<div class="hc-spacer"></div>
+		{/if}
+
+		{#if workspaceReady && liveCounts.reporting}
+			<button
+				class="hc-btn hc-btn--ghost hc-btn--sm running"
+				class:on={liveOnly}
+				aria-pressed={liveOnly}
+				onclick={() => (liveOnly = !liveOnly)}
+				title={liveOnly ? 'Show all sessions' : 'Show only sessions open in a terminal now'}
+			>
+				{#if liveCounts.waiting}
+					<LiveStatus status="waiting" label={`${liveCounts.waiting} need${liveCounts.waiting === 1 ? 's' : ''} input`} />
+				{/if}
+				<LiveStatus status={liveCounts.working ? 'working' : liveCounts.running ? 'open' : 'closed'} label={`${liveCounts.running} open`} />
+			</button>
+			<span class="hc-sep providers-sep"></span>
 		{/if}
 
 		{#if providers.length}
@@ -974,6 +1116,9 @@
 		<div class="hc-pop menu" role="menu">
 			<button class="hc-pop__row" role="menuitem" onclick={groupByProject}>
 				<Icon name="group" />Group by project <span class="n">zones per repo</span>
+			</button>
+			<button class="hc-pop__row" role="menuitemcheckbox" aria-checked={showArchived} onclick={toggleShowArchived}>
+				<Icon name="archive" />Show archived <span class="n">{showArchived ? 'On' : 'Off'} · {archivedCount}</span>
 			</button>
 			<div class="divider"></div>
 			<button
@@ -1023,6 +1168,9 @@
 				session={selected}
 				{now}
 				name={titlesOf.get(selected.id) ?? null}
+				isArchived={archived.has(selected.id)}
+				status={live.get(selected.id) ?? null}
+				onarchive={(value) => setArchived([selected.id], value)}
 				onrename={(title) => renameSession(selected.id, title)}
 				tags={tagsOf.get(selected.id) ?? []}
 				zones={[...zones.values()]}
@@ -1041,6 +1189,11 @@
 			<button class="hc-btn hc-btn--primary hc-btn--sm" onclick={zoneFromSelection}><Icon name="zone" size={13} />Create zone</button>
 			{#if selectionInZones}
 				<button class="hc-btn hc-btn--sm" onclick={removeSelectionFromZones}>Remove from zone</button>
+			{/if}
+			{#if selectedList.every((id) => archived.has(id))}
+				<button class="hc-btn hc-btn--sm" onclick={() => setArchived(selectedList, false)}><Icon name="archive" size={13} />Unarchive</button>
+			{:else}
+				<button class="hc-btn hc-btn--sm" onclick={() => setArchived(selectedList.filter((id) => !archived.has(id)), true)}><Icon name="archive" size={13} />Archive</button>
 			{/if}
 			<button class="hc-iconbtn small" onclick={() => multi.clear()} aria-label="Clear selection" title="Clear selection (Esc)"><Icon name="x" /></button>
 		</div>
@@ -1120,7 +1273,8 @@
 		position: absolute;
 		top: 48px;
 		right: 8px;
-		z-index: var(--z-panel);
+		/* Above the sidebar, which shares the panel layer. */
+		z-index: calc(var(--z-panel) + 10);
 		width: 300px;
 	}
 	.menu button.hc-pop__row {
@@ -1270,6 +1424,13 @@
 		border: 0;
 	}
 
+	.running {
+		gap: 10px;
+	}
+	.running.on {
+		background: var(--accent-soft);
+		outline: 1px solid var(--accent);
+	}
 	@media (max-width: 760px) {
 		.side {
 			left: 8px;

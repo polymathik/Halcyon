@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Session } from '@halcyon/core';
+	import type { CardStatus } from '#lib/live.js';
+	import LiveStatus from './LiveStatus.svelte';
 	import { displayPath, displayTitle, exactTime, plural, providerLabel, providerMonogram, relativeTime } from '#lib/format.js';
 
 	let {
@@ -17,7 +19,9 @@
 		activeTags = [],
 		highlighted = false,
 		dimmed = false,
-		hidden = false
+		hidden = false,
+		isArchived = false,
+		status = null
 	}: {
 		session: Session;
 		/** Display name given in Halcyon; overrides the provider title. */
@@ -36,7 +40,11 @@
 		highlighted?: boolean;
 		dimmed?: boolean;
 		hidden?: boolean;
+		isArchived?: boolean;
+		/** Live state from the provider's own signal; null when it can't tell. */
+		status?: CardStatus | null;
 	} = $props();
+	const live = $derived(status && status !== 'closed' ? status : null);
 
 	const title = $derived(customTitle ?? displayTitle(session));
 	const named = $derived(!!customTitle || !!session.title);
@@ -61,8 +69,8 @@
 	const ordered = $derived([...tags.filter((t) => activeTags.includes(t)), ...tags.filter((t) => !activeTags.includes(t))]);
 </script>
 
-<!-- Live status is not verified yet, so the card shows turns and last activity, never a status word.
-     The slot carries the canvas position; the card keeps the design system's own hover/drag transforms. -->
+<!-- A status word appears only for a running session, from the provider's own signal; otherwise the
+     card shows turns. The slot carries the canvas position; the card keeps the design system's own hover/drag transforms. -->
 <div class="slot" class:is-dragging={dragging} class:hidden data-slot={session.id} style:transform="translate({x}px, {y}px)">
 	<div
 		class="hc-card"
@@ -71,14 +79,16 @@
 		class:is-compact={compact}
 		class:is-highlighted={highlighted}
 		class:is-dimmed={dimmed}
+		class:archived={isArchived}
 		data-id={session.id}
 		role="button"
 		tabindex="0"
 		aria-pressed={selected}
-		aria-label={`${title}, ${providerLabel(session.provider)}, last active ${time}`}
+		aria-label={`${title}, ${providerLabel(session.provider)}${status ? `, ${status === 'waiting' ? 'needs input' : status}` : ''}, last active ${time}`}
 	>
 		<div class="hc-card__head">
 			<span class="hc-pmark" data-p={session.provider} title={providerLabel(session.provider)}>{providerMonogram(session.provider)}</span>
+			{#if isArchived}<span class="hc-chip hc-chip--count archived-chip">Archived</span>{/if}
 			{#if renaming}
 				<input
 					bind:this={input}
@@ -98,9 +108,16 @@
 			{/if}
 		</div>
 		<div class="hc-card__path" title={path ?? undefined}>{displayPath(path) ?? 'Unknown folder'}</div>
+		{#if compact && live}
+			<div class="hc-card__row"><LiveStatus status={live} /></div>
+		{/if}
 		{#if !compact}
 			<div class="hc-card__row">
-				<span class="turns">{session.userTurnCount === null ? '— turns' : plural(session.userTurnCount, 'turn')}</span>
+				{#if live}
+					<LiveStatus status={live} />
+				{:else}
+					<span class="turns">{session.userTurnCount === null ? '— turns' : plural(session.userTurnCount, 'turn')}</span>
+				{/if}
 				<time class="hc-card__time" datetime={session.lastActivityAt ?? undefined} title={exactTime(session.lastActivityAt)}>{time}</time>
 			</div>
 			{#if tags.length}
@@ -139,6 +156,15 @@
 		height: calc(var(--provider-mark) * var(--lod, 1));
 		font-size: calc(10px * var(--lod, 1));
 		border-radius: calc(var(--radius-sm) * var(--lod, 1));
+	}
+	.hc-card.archived {
+		opacity: 0.6;
+		border-style: dashed;
+		box-shadow: none;
+	}
+	.archived-chip {
+		order: 3;
+		flex: none;
 	}
 	.rename {
 		flex: 1;

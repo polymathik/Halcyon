@@ -119,5 +119,21 @@ export function demoFixtureAdapters(): ProviderAdapter[] {
 			userTurnCount: 9
 		})
 	];
-	return [createFixtureAdapter('claude', claude), createFixtureAdapter('codex', codex)];
+	// Demo live state so the UI's status display can be seen without real sessions.
+	const claudeAdapter = createFixtureAdapter('claude', claude);
+	claudeAdapter.live = async () => ({
+		state: 'ok',
+		detail: 'status',
+		entries: [
+			{ nativeId: '11111111-1111-4111-8111-111111111111', sourcePath: null, state: 'working', since: hoursAgo(0.05) },
+			{ nativeId: '22222222-2222-4222-8222-222222222222', sourcePath: null, state: 'waiting', since: hoursAgo(0.1) }
+		]
+	});
+	const codexAdapter = createFixtureAdapter('codex', codex);
+	codexAdapter.live = async () => ({
+		state: 'ok',
+		detail: 'presence',
+		entries: [{ nativeId: '44444444-4444-4444-8444-444444444444', sourcePath: null, state: 'open', since: null }]
+	});
+	return [claudeAdapter, codexAdapter];
 }

@@ -100,6 +100,13 @@ const MIGRATIONS: string[] = [
 	`
 	-- A collapsed zone shows only its label; its cards are hidden, not moved.
 	ALTER TABLE zones ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
+	`,
+	`
+	-- Sessions the user archived in Halcyon. Provider files are never touched.
+	CREATE TABLE session_archive (
+		session_id TEXT PRIMARY KEY,
+		archived_at TEXT NOT NULL
+	);
 	`
 ];
 

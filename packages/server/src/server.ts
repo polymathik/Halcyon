@@ -4,13 +4,15 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAdaptorServer } from '@hono/node-server';
-import type { ProviderAdapter } from '@halcyon/core';
+import type { ProcessProbe, ProviderAdapter } from '@halcyon/core';
 import { migrate } from './db/migrations.js';
 import { SessionCacheStore } from './db/session-cache.js';
 import { openDatabase, type Database } from './db/sqlite.js';
 import { WorkspaceStore } from './db/workspace-store.js';
 import { DiscoveryService } from './discovery/discovery-service.js';
 import { createApp } from './http/app.js';
+import { LiveService } from './live/live-service.js';
+import { createProcessProbe } from './live/process-probe.js';
 
 export const LOOPBACK = '127.0.0.1';
 
@@ -19,6 +21,8 @@ export interface StartOptions {
 	dataDir?: string;
 	adapters: ProviderAdapter[];
 	webRoot?: string | null;
+	/** Process facts for live state; defaults to the real system probe. */
+	probe?: ProcessProbe;
 }
 
 export interface RunningServer {
@@ -75,7 +79,14 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		discovery,
 		workspaces: new WorkspaceStore(db),
 		allowedHosts: [`${LOOPBACK}:${port}`, `localhost:${port}`],
-		webRoot
+		webRoot,
+		live: new LiveService({
+			adapters: options.adapters,
+			probe: options.probe ?? createProcessProbe(),
+			sessionForSource: (path) => discovery.sessionForSource(path),
+			knownSessions: () => discovery.knownIds(),
+			rescan: () => void discovery.refresh()
+		})
 	});
 	// Warm the index so the first page load is fast; failures surface per provider.
 	void discovery.refresh();

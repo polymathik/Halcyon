@@ -55,7 +55,13 @@ export interface Session {
 }
 
 /**
- * Halcyon makes no claim about whether a session is working or waiting until a
- * verified live signal exists. The UI shows last activity plus this value.
+ * A session's live state, reported only from a signal the provider itself
+ * publishes (never inferred from file writes):
+ * - `working`, `waiting` (needs input) and `idle` come from Claude Code's own
+ *   session registry;
+ * - `open` means a live process holds the session but reports no detail
+ *   (Codex: the rollout file is open in a running `codex` process).
+ * A session with no entry is closed when its provider's signal is available,
+ * and unknown otherwise.
  */
-export type LiveStatus = 'unknown';
+export type LiveState = 'working' | 'waiting' | 'idle' | 'open';

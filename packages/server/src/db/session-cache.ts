@@ -1,4 +1,4 @@
-import type { DiscoveredSession, ParseCache, ProviderId, Session } from '@halcyon/core';
+import type { DiscoveredSession, ParseCache, ProviderId, Session, SessionId } from '@halcyon/core';
 import type { Database } from './sqlite.js';
 
 interface CacheRow {
@@ -98,6 +98,14 @@ export class SessionCacheStore {
 	}
 
 	/** Last known present sessions for a provider, used when a scan fails. */
+	/** The present session parsed from this source path, if any. */
+	sessionForSource(path: string): SessionId | null {
+		const row = this.db
+			.prepare('SELECT session_id FROM session_cache WHERE source_path = ? AND missing_since IS NULL')
+			.get(path) as { session_id: SessionId } | undefined;
+		return row?.session_id ?? null;
+	}
+
 	lastKnown(provider: ProviderId): Session[] {
 		const rows = this.db
 			.prepare(

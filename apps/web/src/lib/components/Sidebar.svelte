@@ -2,13 +2,18 @@
 	import { normalizeTag, type PreviewMessage, type Session, type SessionCommandResponse, type Zone } from '@halcyon/core';
 	import { api } from '#lib/api.js';
 	import { displayPath, displayTitle, exactTime, plural, providerLabel, providerMonogram, relativeTime } from '#lib/format.js';
+	import { isRunning, STATUS_LABEL, type CardStatus } from '#lib/live.js';
 	import Icon from './Icon.svelte';
+	import LiveStatus from './LiveStatus.svelte';
 
 	let {
 		session,
 		now,
 		name = null,
 		onrename,
+		isArchived = false,
+		status = null,
+		onarchive,
 		tags,
 		zones,
 		zoneId,
@@ -23,6 +28,10 @@
 		name?: string | null;
 		/** New name, empty string to reset, or null to cancel. */
 		onrename: (title: string | null) => void;
+		isArchived?: boolean;
+		/** Live status; null when the provider can't tell. */
+		status?: CardStatus | null;
+		onarchive: (archived: boolean) => void;
 		tags: string[];
 		zones: Zone[];
 		zoneId: number | null;
@@ -31,6 +40,13 @@
 		onzone: (zoneId: number | null) => void;
 		ontoast: (message: string) => void;
 	} = $props();
+	const statusHelp: Record<CardStatus, string> = {
+		working: `${STATUS_LABEL.working}: the agent is running a turn.`,
+		waiting: `${STATUS_LABEL.waiting}: the agent is waiting for you, for example to approve a tool.`,
+		idle: `${STATUS_LABEL.idle}: open in a terminal, waiting for your next prompt.`,
+		open: `${STATUS_LABEL.open}: running in a terminal. This agent doesn't report more detail.`,
+		closed: `${STATUS_LABEL.closed}: no running process holds this session.`
+	};
 
 	// ---------- tags ----------
 	let tagInput = $state('');
@@ -183,10 +199,25 @@
 				<span class="hc-mono sub-path" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? 'Unknown folder'}</span>
 			</div>
 		</div>
+		<button
+			class="hc-iconbtn"
+			onclick={() => onarchive(!isArchived)}
+			aria-label={isArchived ? 'Unarchive session' : 'Archive session'}
+			title={isArchived ? 'Unarchive' : 'Archive (hide from the canvas; files are kept)'}
+			aria-pressed={isArchived}
+		>
+			<Icon name="archive" />
+		</button>
 		<button class="hc-iconbtn" onclick={onclose} aria-label="Close details" title="Close (Esc)"><Icon name="x" /></button>
 	</div>
 
 	<div class="hc-sidebar__body">
+		{#if isArchived}
+			<div class="archived-note">
+				<span>Archived. It's hidden from the canvas; its transcript is untouched.</span>
+				<button class="hc-btn hc-btn--sm" onclick={() => onarchive(false)}>Unarchive</button>
+			</div>
+		{/if}
 		<section>
 			<h3 class="hc-sec__label">Details</h3>
 			<dl class="hc-meta">
@@ -196,6 +227,10 @@
 				{/if}
 				<dt>Agent</dt>
 				<dd>{providerLabel(session.provider)}</dd>
+				<dt>Status</dt>
+				<dd title={status ? statusHelp[status] : 'This agent does not report whether the session is running.'}>
+					{#if status}<LiveStatus {status} />{:else}<span class="muted">Unknown</span>{/if}
+				</dd>
 				<dt>Last activity</dt>
 				<dd title={exactTime(session.lastActivityAt)}>{session.lastActivityAt ? `${relativeTime(session.lastActivityAt, now)} ago`.replace('now ago', 'now') : '—'}</dd>
 				<dt>Started</dt>
@@ -292,6 +327,9 @@
 				<button class="hc-btn" onclick={openFolder} disabled={!actions?.canOpenFolder || busy !== null}><Icon name="folder" />Open folder</button>
 				<button class="hc-btn" onclick={copyCommand} disabled={!actions?.command}><Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy command'}</button>
 			</div>
+			{#if isRunning(status)}
+				<p class="footnote">Already open in a terminal. Resuming starts a second copy of this session.</p>
+			{/if}
 			{#if actions?.command}
 				<div class="hc-cmd cmd"><code title={actions.command}>{actions.command}</code></div>
 			{:else if actions}
@@ -302,6 +340,9 @@
 </aside>
 
 <style>
+	.muted {
+		color: var(--ink-muted);
+	}
 	.hc-sidebar {
 		height: 100%;
 		width: 100%;
@@ -347,6 +388,17 @@
 		padding: 0 6px;
 		outline: 0;
 		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.archived-note {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		justify-content: space-between;
+		padding: 8px 8px 8px 12px;
+		border-radius: var(--radius-lg);
+		background: var(--surface-sunken);
+		font: 450 12px/16px var(--font-sans);
+		color: var(--ink-muted);
 	}
 	.link {
 		all: unset;
