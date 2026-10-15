@@ -108,7 +108,17 @@ Each agent's usual environment overrides are honoured, for example `CLAUDE_CONFI
 
 ## Quick start
 
-**Requirements:** Node.js **22.17 or newer** (Halcyon uses the built-in `node:sqlite`) and [pnpm](https://pnpm.io) 10. macOS and Linux are fully supported; on Windows everything except *Resume in terminal* works (copy the command instead).
+**Requirements:** Node.js **22.17 or newer** (Halcyon uses the built-in `node:sqlite`). macOS and Linux are fully supported; on Windows everything except *Resume in terminal* works (copy the command instead).
+
+```bash
+npx halcyon-ai               # run without installing
+npm install -g halcyon-ai    # or install the `halcyon` command
+halcyon
+```
+
+### From source
+
+Building from source also needs [pnpm](https://pnpm.io) 10.
 
 ```bash
 git clone https://github.com/sarupurisailalith/Halcyon.git
@@ -123,8 +133,8 @@ Halcyon starts on `http://127.0.0.1:4317` (or the next free port) and opens your
 To install the `halcyon` command globally from a local build:
 
 ```bash
-pnpm --filter halcyon run package        # writes packages/server/release/halcyon-<version>.tgz
-npm install -g packages/server/release/halcyon-*.tgz
+pnpm --filter halcyon-ai run package     # writes packages/server/release/halcyon-ai-<version>.tgz
+npm install -g packages/server/release/halcyon-ai-*.tgz
 halcyon
 ```
 

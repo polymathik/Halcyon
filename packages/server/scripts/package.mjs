@@ -1,6 +1,8 @@
 // Builds a self-contained, installable package in packages/server/release/:
-// one bundled dist/cli.js (server, adapters and @halcyon/core; no runtime
-// dependencies) plus the built web UI in dist/web, then runs `npm pack`.
+// one bundled dist/halcyon.js (server, adapters and @halcyon/core; no runtime
+// dependencies) behind a small dist/cli.js Node version guard, plus the built
+// web UI in dist/web, then runs `npm pack`. Publish from release/, not from
+// packages/server/ (that package is private and uses workspace dependencies).
 // Run after `pnpm build` (the web build must exist).
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,7 +23,7 @@ mkdirSync(here('../release/dist'), { recursive: true });
 
 await build({
 	entryPoints: [here('../src/cli.ts')],
-	outfile: here('../release/dist/cli.js'),
+	outfile: here('../release/dist/halcyon.js'),
 	bundle: true,
 	platform: 'node',
 	format: 'esm',
@@ -32,6 +34,27 @@ await build({
 	// The source starts with a shebang; keep exactly one.
 	banner: { js: '' }
 });
+
+// npx and npm only warn about `engines`, and the bundle's static `node:sqlite`
+// import fails before any of its code runs on an older Node. Check first, then
+// load the bundle dynamically.
+const minNode = pkg.engines.node.replace(/^>=\s*/, '');
+writeFileSync(
+	here('../release/dist/cli.js'),
+	[
+		'#!/usr/bin/env node',
+		`const required = ${JSON.stringify(minNode)};`,
+		"const [major, minor] = process.versions.node.split('.').map(Number);",
+		"const [reqMajor, reqMinor] = required.split('.').map(Number);",
+		'if (major < reqMajor || (major === reqMajor && minor < reqMinor)) {',
+		'\tprocess.stderr.write(`halcyon: Node.js ${required} or newer is required (found ${process.versions.node}).\\n`);',
+		'\tprocess.exit(1);',
+		'}',
+		"await import('./halcyon.js');",
+		''
+	].join('\n'),
+	{ mode: 0o755 }
+);
 cpSync(web, here('../release/dist/web'), { recursive: true });
 
 writeFileSync(
@@ -68,9 +91,19 @@ writeFileSync(
 		'One calm canvas for every AI coding session on your machine: Claude Code, Codex CLI, Cursor CLI, Gemini CLI, Qwen Code, GitHub Copilot CLI, OpenCode, Kilo Code, Crush and Goose.',
 		'',
 		'```',
-		'halcyon            # start on 127.0.0.1:4317 and open your browser',
+		`npx ${pkg.name}            # start on 127.0.0.1:4317 and open your browser`,
+		`npx ${pkg.name} --fixtures # try it with invented demo sessions`,
+		'```',
+		'',
+		'Or install the `halcyon` command globally:',
+		'',
+		'```',
+		`npm install -g ${pkg.name}`,
+		'halcyon',
 		'halcyon --help',
 		'```',
+		'',
+		`Requires Node.js ${pkg.engines.node.replace(/^>=\s*/, '')} or newer (Halcyon uses the built-in \`node:sqlite\`).`,
 		'',
 		'Everything stays on this machine: the server binds to 127.0.0.1, sends no telemetry and needs no account.',
 		'',
