@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util';
 import type { ProviderAdapter } from '@halcyon/core';
 import { demoFixtureAdapters } from './adapters/fixture-adapter.js';
 import { defaultAdapters } from './adapters/index.js';
+import { NativeActions } from './actions/native.js';
 import { startServer, type RunningServer } from './server.js';
 
 const DEFAULT_PORT = 4317;
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
 		throw new Error(`Invalid port: ${values.port}`);
 	}
 	const adapters: ProviderAdapter[] = values.fixtures ? demoFixtureAdapters() : defaultAdapters();
-	const server = await listenWithFallback(requestedPort, adapters, values['data-dir']);
+	const server = await listenWithFallback(requestedPort, adapters, values['data-dir'], values.fixtures);
 
 	process.stdout.write(`Halcyon is running at ${server.url}\nPress Ctrl+C to stop.\n`);
 	if (values.open && !values['no-open']) openBrowser(server.url);
@@ -55,10 +56,20 @@ async function main(): Promise<void> {
 	process.once('SIGTERM', shutdown);
 }
 
+const demoLauncher = {
+	async launch() {
+		throw new Error('demo');
+	},
+	async available() {
+		return true;
+	}
+};
+
 async function listenWithFallback(
 	requestedPort: number | undefined,
 	adapters: ProviderAdapter[],
-	dataDir: string | undefined
+	dataDir: string | undefined,
+	demo = false
 ): Promise<RunningServer> {
 	// An explicit port is honored exactly; the default walks forward if busy.
 	const ports =
@@ -68,7 +79,13 @@ async function listenWithFallback(
 	let lastError: unknown;
 	for (const port of ports) {
 		try {
-			return await startServer({ port, adapters, ...(dataDir ? { dataDir } : {}) });
+			return await startServer({
+				port,
+				adapters,
+				...(dataDir ? { dataDir } : {}),
+				// Demo sessions have invented folders and IDs: their actions never start a process.
+				...(demo ? { actions: new NativeActions(demoLauncher) } : {})
+			});
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
 			lastError = error;

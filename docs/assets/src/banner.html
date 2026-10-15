@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- README banner. Built from the Halcyon design system (tokens.css + bundle.css).
+     To regenerate: open in Chromium, screenshot .banner at 1280x440, device scale 2,
+     once with data-theme="light" and once with data-theme="dark". -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Halcyon banner</title>
+<link rel="stylesheet" href="../../../apps/web/src/lib/design/tokens.css">
+<link rel="stylesheet" href="../../../apps/web/src/lib/design/bundle.css">
+<style>
+@font-face { font-family: "Geist Variable"; src: url("../../../apps/web/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono Variable"; src: url("../../../apps/web/node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+html, body { margin: 0; }
+.banner {
+  position: relative; width: 1280px; height: 440px; overflow: hidden;
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.3px);
+  background-size: 20px 20px; background-position: 10px 10px;
+  font-family: var(--font-sans); color: var(--ink);
+}
+.copy { position: absolute; left: 72px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; gap: 22px; z-index: 2; }
+.brand { display: flex; align-items: center; gap: 18px; }
+.brand svg { width: 64px; height: 64px; fill: var(--accent); }
+.brand h1 { margin: 0; font: 650 76px/1 var(--font-sans); letter-spacing: -0.035em; }
+.tagline { margin: 0; font: 450 23px/32px var(--font-sans); color: var(--ink-muted); letter-spacing: -0.01em; max-width: 520px; }
+.agents { display: flex; gap: 6px; align-items: center; }
+.agents .hc-pmark { width: 24px; height: 24px; font-size: 10.5px; border-radius: 6px; }
+.agents span.more { font: 450 13px/1 var(--font-sans); color: var(--ink-subtle); margin-left: 6px; }
+.scene { position: absolute; left: 640px; top: 0; right: 0; bottom: 0; }
+.fade { position: absolute; inset: 0; background: linear-gradient(90deg, var(--canvas) 0%, transparent 12%, transparent 88%, var(--canvas) 100%); pointer-events: none; z-index: 1; }
+.scene .hc-zone, .scene .hc-card { position: absolute; }
+.scene .hc-card { width: 248px; }
+.working { border-color: var(--status-working) !important; }
+.waiting { border-color: var(--status-waiting) !important; box-shadow: 0 0 0 1px var(--status-waiting), var(--shadow-card) !important; }
+.open { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)) !important; }
+.faded { border-color: color-mix(in srgb, var(--border) 60%, transparent) !important; }
+.faded .hc-card__title { color: color-mix(in srgb, var(--ink-muted) 70%, var(--ink)); }
+.selected { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent), var(--shadow-card-hover) !important; }
+.turns { font: 450 12px/16px var(--font-sans); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="hc-root">
+<div class="banner">
+  <div class="copy">
+    <div class="brand">
+      <svg viewBox="7 10.5 34 34" aria-hidden="true"><path d="M10 25a14 14 0 0 1 28 0z"/><rect x="10" y="28" width="28" height="4" rx="2"/><rect x="13.5" y="34" width="21" height="4" rx="2" opacity="0.7"/><rect x="18" y="40" width="12" height="4" rx="2" opacity="0.45"/></svg>
+      <h1>Halcyon</h1>
+    </div>
+    <p class="tagline">One calm canvas for every AI coding session on your machine. See what's running, organise it spatially, resume anything.</p>
+    <div class="agents" aria-label="Supported agents">
+      <span class="hc-pmark" data-p="claude">C</span><span class="hc-pmark" data-p="codex">Cx</span><span class="hc-pmark" data-p="cursor">Cu</span><span class="hc-pmark" data-p="gemini">G</span><span class="hc-pmark" data-p="qwen">Qw</span><span class="hc-pmark" data-p="copilot">Cp</span><span class="hc-pmark" data-p="opencode">Oc</span><span class="hc-pmark" data-p="kilo">K</span><span class="hc-pmark" data-p="crush">Cr</span><span class="hc-pmark" data-p="goose">Go</span>
+      <span class="more">10 agents · local-first</span>
+    </div>
+  </div>
+
+  <div class="scene">
+    <div class="hc-zone" data-c="sage" style="left: 40px; top: 70px; width: 560px; height: 148px"><span class="hc-zone__label">api-server <span class="hc-zone__count">2</span></span></div>
+    <div class="hc-card working" style="left: 56px; top: 110px">
+      <div class="hc-card__head"><span class="hc-pmark" data-p="claude">C</span><span class="hc-card__title">Refactor auth middleware</span></div>
+      <div class="hc-card__path">~/projects/api-server</div>
+      <div class="hc-card__row"><span class="hc-status" data-s="working"><span class="hc-dot"></span>Working</span><span class="hc-card__time">now</span></div>
+    </div>
+    <div class="hc-card open" style="left: 320px; top: 110px">
+      <div class="hc-card__head"><span class="hc-pmark" data-p="codex">Cx</span><span class="hc-card__title">Add pagination to search API</span></div>
+      <div class="hc-card__path">~/projects/api-server</div>
+      <div class="hc-card__row"><span class="hc-status" data-s="open" style="--sc: var(--status-idle)"><span class="hc-dot"></span>Open</span><span class="hc-card__time">12m</span></div>
+    </div>
+    <div class="hc-zone" data-c="sky" style="left: 40px; top: 246px; width: 560px; height: 176px"><span class="hc-zone__label">web-client <span class="hc-zone__count">2</span></span></div>
+    <div class="hc-card waiting selected" style="left: 56px; top: 286px">
+      <div class="hc-card__head"><span class="hc-pmark" data-p="claude">C</span><span class="hc-card__title">Fix flaky upload test</span></div>
+      <div class="hc-card__path">~/projects/web-client</div>
+      <div class="hc-card__row"><span class="hc-status hc-status--pill" data-s="waiting"><span class="hc-dot"></span>Needs input</span><span class="hc-card__time">2m</span></div>
+    </div>
+    <div class="hc-card faded" style="left: 320px; top: 286px">
+      <div class="hc-card__head"><span class="hc-pmark" data-p="cursor">Cu</span><span class="hc-card__title">Dark mode for settings screen</span></div>
+      <div class="hc-card__path">~/projects/web-client</div>
+      <div class="hc-card__row"><span class="turns">11 turns</span><span class="hc-card__time">20h</span></div>
+      <div class="hc-card__tags"><span class="hc-chip">ui</span><span class="hc-chip">settings</span></div>
+    </div>
+    <div class="fade"></div>
+  </div>
+</div>
+</body>
+</html>
