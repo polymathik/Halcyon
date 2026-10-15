@@ -2,13 +2,29 @@ import type { ProviderId, Session } from '@halcyon/core';
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
 	claude: 'Claude Code',
-	codex: 'Codex'
+	codex: 'Codex',
+	cursor: 'Cursor CLI',
+	gemini: 'Gemini CLI',
+	qwen: 'Qwen Code',
+	copilot: 'Copilot CLI',
+	opencode: 'OpenCode',
+	kilo: 'Kilo Code',
+	crush: 'Crush',
+	goose: 'Goose'
 };
 
 /** Monogram for the design system's provider tile (never a vendor logo). */
 const PROVIDER_MONOGRAMS: Record<ProviderId, string> = {
 	claude: 'C',
-	codex: 'Cx'
+	codex: 'Cx',
+	cursor: 'Cu',
+	gemini: 'G',
+	qwen: 'Qw',
+	copilot: 'Cp',
+	opencode: 'Oc',
+	kilo: 'K',
+	crush: 'Cr',
+	goose: 'Go'
 };
 
 export function providerLabel(provider: ProviderId): string {
