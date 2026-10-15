@@ -61,12 +61,12 @@ export class LiveService {
 			response.providers.push({ provider: adapter.provider, state: 'ok', detail: live.detail });
 			for (const entry of live.entries) {
 				let id: SessionId | null = null;
-				if (entry.nativeId && isValidNativeId(entry.nativeId)) {
+				if (entry.nativeId && isValidNativeId(entry.nativeId, adapter.provider)) {
 					const candidate = toSessionId(adapter.provider, entry.nativeId);
 					if (known.has(candidate)) id = candidate;
 				}
 				if (!id && entry.sourcePath) id = this.deps.sessionForSource(entry.sourcePath);
-				if (!id && entry.nativeId && isValidNativeId(entry.nativeId)) {
+				if (!id && entry.nativeId && isValidNativeId(entry.nativeId, adapter.provider)) {
 					// Running but not on the canvas: either just started (a rescan picks it
 					// up) or a kind Halcyon never shows. Rescan once per session, never report it.
 					const candidate = toSessionId(adapter.provider, entry.nativeId);

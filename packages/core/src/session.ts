@@ -10,7 +10,18 @@
  * title, or an index thread name); prompt text is never used as a fallback.
  */
 
-export const PROVIDERS = ['claude', 'codex'] as const;
+export const PROVIDERS = [
+	'claude',
+	'codex',
+	'cursor',
+	'gemini',
+	'qwen',
+	'copilot',
+	'opencode',
+	'kilo',
+	'crush',
+	'goose'
+] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
 /** Provider-scoped ID, e.g. `claude:<uuid>` or `codex:<uuid>`. */

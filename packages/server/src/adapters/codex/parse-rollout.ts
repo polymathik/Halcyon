@@ -222,7 +222,7 @@ export async function parseRollout(
 	const metaPayload = meta as Record<string, unknown> | null;
 	if (!metaPayload) return { kind: 'excluded', reason: 'no-session-meta', malformedLines };
 
-	const metaId = [metaPayload.id, metaPayload.session_id].find(isValidNativeId) ?? null;
+	const metaId = [metaPayload.id, metaPayload.session_id].find((v): v is string => isValidNativeId(v)) ?? null;
 	const nativeId = metaId ?? filenameId;
 	if (!nativeId) return { kind: 'excluded', reason: 'no-session-meta', malformedLines };
 

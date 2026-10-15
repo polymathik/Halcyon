@@ -18,7 +18,7 @@ Build for top-level local **Claude Code** and **Codex CLI** sessions first. The 
 - Resume session, open project folder, and copy resume command.
 - Useful empty states, adapter failure states, and no required account or API key.
 
-Keep oversight agent/MCP, prompt injection, additional providers, rich live status, multiple named workspaces, cloud sync, multi-user features, and cost analytics outside the MVP unless the user changes scope.
+The MVP is complete. The pure-tool product now also covers named workspaces, export/import, live status from provider signals, and adapters for Cursor CLI, Gemini CLI, Qwen Code, GitHub Copilot CLI, OpenCode, Kilo Code, Crush and Goose (each adapter lives in `packages/server/src/adapters/<provider>/` and lists only top-level, resumable sessions). Keep oversight agent/MCP, prompt injection, cloud sync, multi-user features, and cost analytics out until the user asks.
 
 ## Implementation direction
 

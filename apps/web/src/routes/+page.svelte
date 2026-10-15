@@ -159,7 +159,12 @@
 	const archived = new SvelteSet<string>();
 	let showArchived = $state(readPref('showArchived', false));
 	const sessions = $derived(showArchived ? allSessions : allSessions.filter((s) => !archived.has(s.id)));
-	const problems = $derived(providers.filter((p) => p.health.state !== 'ok'));
+	// Agents that aren't installed are normal, not problems: only failed scans get a banner.
+	const problems = $derived(providers.filter((p) => p.health.state === 'error'));
+	// The top bar lists agents with sessions (or a failed scan); the ⋯ menu lists them all.
+	const shownProviders = $derived(
+		providers.filter((p) => p.health.state === 'error' || (p.health.state === 'ok' && p.health.sessionCount > 0))
+	);
 	const live = $derived(statusMap(allSessions, liveData));
 	const liveCounts = $derived.by(() => {
 		let running = 0;
@@ -178,7 +183,7 @@
 		const base = 'Halcyon';
 		document.title = liveCounts.waiting ? `(${liveCounts.waiting}) ${base}` : base;
 	});
-	const agentsFound = $derived(providers.filter((p) => p.health.state === 'ok').length);
+	const agentsFound = $derived(providers.filter((p) => p.health.state === 'ok' && p.health.sessionCount > 0).length);
 
 	// Workspace layout: loaded once, then owned here. Polling only refreshes sessions.
 	const positions = new SvelteMap<string, Point>();
@@ -1112,17 +1117,16 @@
 					<rect x="52" y="28" width="60" height="34" rx="6" class="art-card art-dashed" />
 					<circle cx="18" cy="24" r="3" class="art-dot" />
 				</svg>
-				{#if agentsFound === 0}
+				{#if providers.every((p) => p.health.state !== 'ok')}
 					<h2>No agents detected</h2>
-					<p>Halcyon reads local Claude Code and Codex sessions. Install either one, run a session, then rescan.</p>
-					<div class="commands">
-						<div class="hc-cmd"><code>npm i -g @anthropic-ai/claude-code</code></div>
-						<div class="hc-cmd"><code>npm i -g @openai/codex</code></div>
-					</div>
+					<p>
+						Halcyon reads local sessions from {providers.map((p) => p.displayName).join(', ')}. Run a session in any of them,
+						then rescan.
+					</p>
 				{:else}
 					<h2>No sessions yet</h2>
 					<p>
-						Halcyon found {providers.filter((p) => p.health.state === 'ok').map((p) => p.displayName).join(' and ')}, but no
+						Halcyon found {providers.filter((p) => p.health.state === 'ok').map((p) => p.displayName).join(', ')}, but no
 						sessions. Start one in any project and it appears here.
 					</p>
 				{/if}
@@ -1256,9 +1260,9 @@
 			<span class="hc-sep providers-sep"></span>
 		{/if}
 
-		{#if providers.length}
+		{#if shownProviders.length}
 			<ul class="providers" aria-label="Agents">
-				{#each providers as status (status.provider)}
+				{#each shownProviders as status (status.provider)}
 					<li class="provider" data-state={status.health.state} title={healthSummary(status)}>
 						<span class="hc-pmark" data-p={status.provider} aria-hidden="true">{providerMonogram(status.provider)}</span>
 						<span class="sr-only">{healthSummary(status)}</span>
@@ -1384,6 +1388,17 @@
 			<button class="hc-pop__row" role="menuitemcheckbox" aria-checked={showArchived} onclick={toggleShowArchived}>
 				<Icon name="archive" />Show archived <span class="n">{showArchived ? 'On' : 'Off'} · {archivedCount}</span>
 			</button>
+			<div class="divider"></div>
+			<div class="menu-label">Agents</div>
+			{#each providers as status (status.provider)}
+				<div class="hc-pop__row agent-row" title={healthSummary(status)}>
+					<span class="hc-pmark" data-p={status.provider} aria-hidden="true">{providerMonogram(status.provider)}</span>
+					{status.displayName}
+					<span class="n">
+						{#if status.health.state === 'ok'}{plural(status.health.sessionCount, 'session')}{:else if status.health.state === 'error'}scan failed{:else}not found{/if}
+					</span>
+				</div>
+			{/each}
 			<div class="divider"></div>
 			<button
 				class="hc-pop__row"
@@ -1542,6 +1557,19 @@
 		font: 550 12px/16px var(--font-sans);
 		color: var(--ink);
 	}
+	.menu-label {
+		padding: 4px 8px 2px;
+		font: 500 11px/14px var(--font-sans);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ink-subtle);
+	}
+	.agent-row {
+		cursor: default;
+	}
+	.agent-row:hover {
+		background: transparent;
+	}
 	.ws-input {
 		height: var(--control-height);
 		padding: 0 8px;
@@ -1601,6 +1629,8 @@
 		/* Above the sidebar, which shares the panel layer. */
 		z-index: calc(var(--z-panel) + 10);
 		width: 300px;
+		max-height: calc(100vh - 64px);
+		overflow-y: auto;
 	}
 	.menu button.hc-pop__row {
 		width: 100%;
@@ -1714,13 +1744,6 @@
 		display: flex;
 		gap: var(--space-2);
 		margin-top: var(--space-2);
-	}
-	.commands {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-		width: 100%;
-		text-align: left;
 	}
 	.art-card {
 		fill: var(--surface);
