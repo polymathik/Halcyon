@@ -1,6 +1,6 @@
 {
-  "name": "halcyon",
-  "version": "0.0.1",
+  "name": "halcyon-ai",
+  "version": "0.1.0",
   "private": true,
   "description": "Local-first canvas for your AI coding CLI sessions",
   "license": "Apache-2.0",
@@ -26,7 +26,7 @@
   ],
   "type": "module",
   "bin": {
-    "halcyon": "./dist/cli.js"
+    "halcyon": "dist/cli.js"
   },
   "exports": {
     ".": {

@@ -8,6 +8,7 @@ First public release candidate.
 
 ### Added
 
+- Published on npm as `halcyon-ai`: run `npx halcyon-ai`, or `npm install -g halcyon-ai` for the `halcyon` command. The CLI exits with a clear message on Node.js older than 22.17.
 - `halcyon` command: starts a server on `127.0.0.1` and opens the browser. Options for port, data folder, no-open and a demo mode with invented sessions.
 - Discovery of top-level, resumable sessions for Claude Code, Codex CLI, Cursor CLI, Gemini CLI, Qwen Code, GitHub Copilot CLI, OpenCode, Kilo Code, Crush and Goose. Each agent fails independently and reports "not installed", "scan failed" or "no sessions" separately.
 - Canvas: session cards with pan, zoom, drag, multi-select, minimap and persistent positions; level of detail when zoomed out.

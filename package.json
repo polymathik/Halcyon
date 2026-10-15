@@ -17,7 +17,7 @@
     "node": ">=22.17"
   },
   "scripts": {
-    "build": "pnpm -r run build && pnpm --filter halcyon run bundle-web",
+    "build": "pnpm -r run build && pnpm --filter halcyon-ai run bundle-web",
     "typecheck": "tsc -b packages/server && pnpm --filter web run check",
     "test": "vitest run",
     "test:watch": "vitest",

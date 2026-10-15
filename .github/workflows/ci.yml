@@ -32,4 +32,4 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - name: Package
-        run: pnpm --filter halcyon run package
+        run: pnpm --filter halcyon-ai run package
