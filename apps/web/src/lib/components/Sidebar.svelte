@@ -196,7 +196,7 @@
 				</h2>
 			{/if}
 			<div class="hc-sidebar__sub">
-				<span class="hc-mono sub-path" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? 'Unknown folder'}</span>
+				<span class="hc-mono sub-path scroll" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? 'Unknown folder'}</span>
 			</div>
 		</div>
 		<button
@@ -223,7 +223,7 @@
 			<dl class="hc-meta">
 				{#if name}
 					<dt>Original name</dt>
-					<dd title={original}>{original} · <button class="link" onclick={() => onrename('')}>Reset</button></dd>
+					<dd class="scroll" title={original}>{original} · <button class="link" onclick={() => onrename('')}>Reset</button></dd>
 				{/if}
 				<dt>Agent</dt>
 				<dd>{providerLabel(session.provider)}</dd>
@@ -238,14 +238,32 @@
 				<dt>Turns</dt>
 				<dd>{session.userTurnCount ?? '—'}</dd>
 				<dt>Folder</dt>
-				<dd class="hc-mono" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? '—'}</dd>
+				<dd class="hc-mono scroll" title={session.projectPath ?? undefined}>{displayPath(session.projectPath) ?? '—'}</dd>
 				{#if session.latestPath}
 					<dt>Now in</dt>
-					<dd class="hc-mono" title={session.latestPath}>{displayPath(session.latestPath)}</dd>
+					<dd class="hc-mono scroll" title={session.latestPath}>{displayPath(session.latestPath)}</dd>
 				{/if}
 				<dt>Session</dt>
-				<dd class="hc-mono" title={session.nativeId}>{session.nativeId}</dd>
+				<dd class="hc-mono scroll" title={session.nativeId}>{session.nativeId}</dd>
 			</dl>
+		</section>
+
+		<section aria-label="Actions">
+			<div class="hc-actions">
+				<button class="hc-btn hc-btn--primary" onclick={resume} disabled={!actions?.canResume || busy !== null} title={actions && !actions.canResume ? 'Resume in terminal is not available here. Copy the command instead.' : undefined}>
+					<Icon name="play" size={13} />{busy === 'resume' ? 'Opening terminal' : 'Resume in terminal'}
+				</button>
+				<button class="hc-btn" onclick={openFolder} disabled={!actions?.canOpenFolder || busy !== null}><Icon name="folder" />Open folder</button>
+				<button class="hc-btn" onclick={copyCommand} disabled={!actions?.command}><Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy command'}</button>
+			</div>
+			{#if isRunning(status)}
+				<p class="footnote">Already open in a terminal. Resuming starts a second copy of this session.</p>
+			{/if}
+			{#if actions?.command}
+				<div class="hc-cmd cmd"><code class="scroll" title={actions.command}>{actions.command}</code></div>
+			{:else if actions}
+				<p class="footnote">This agent has no resume command Halcyon can run.</p>
+			{/if}
 		</section>
 
 		<section>
@@ -319,23 +337,6 @@
 			{/if}
 		</section>
 
-		<section aria-label="Actions">
-			<div class="hc-actions">
-				<button class="hc-btn hc-btn--primary" onclick={resume} disabled={!actions?.canResume || busy !== null} title={actions && !actions.canResume ? 'Resume in terminal is not available here. Copy the command instead.' : undefined}>
-					<Icon name="play" size={13} />{busy === 'resume' ? 'Opening terminal' : 'Resume in terminal'}
-				</button>
-				<button class="hc-btn" onclick={openFolder} disabled={!actions?.canOpenFolder || busy !== null}><Icon name="folder" />Open folder</button>
-				<button class="hc-btn" onclick={copyCommand} disabled={!actions?.command}><Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy command'}</button>
-			</div>
-			{#if isRunning(status)}
-				<p class="footnote">Already open in a terminal. Resuming starts a second copy of this session.</p>
-			{/if}
-			{#if actions?.command}
-				<div class="hc-cmd cmd"><code title={actions.command}>{actions.command}</code></div>
-			{:else if actions}
-				<p class="footnote">This agent has no resume command Halcyon can run.</p>
-			{/if}
-		</section>
 	</div>
 </aside>
 
@@ -410,11 +411,27 @@
 		text-decoration: underline;
 	}
 	.sub-path {
+		display: block;
 		color: var(--ink-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 100%;
+	}
+	/* Long values (paths, IDs, commands) scroll sideways instead of being cut off. */
+	.scroll {
+		overflow-x: auto;
+		overflow-y: hidden;
+		text-overflow: clip;
+		white-space: nowrap;
+		scrollbar-width: thin;
+		user-select: text;
+	}
+	.scroll:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+		border-radius: 3px;
+	}
+	.hc-cmd code.scroll {
+		padding-bottom: 2px;
 	}
 	h3.hc-sec__label {
 		margin-top: 0;
@@ -438,7 +455,6 @@
 	}
 	.cmd {
 		margin-top: 8px;
-		user-select: all;
 	}
 	.field-error {
 		margin: 6px 2px 0;

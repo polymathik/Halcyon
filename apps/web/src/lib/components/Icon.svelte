@@ -19,6 +19,10 @@
 		sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M12.6 3.4l-1 1M4.4 11.6l-1 1"/>',
 		more: '<path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.4"/>',
 		refresh: '<path d="M13.2 8.5A5.2 5.2 0 1 1 11.6 4.3M13 2.5v3.3H9.7"/>',
+		tag: '<path d="M2.5 2.5h5.2l5.8 5.8-5.2 5.2-5.8-5.8z"/><path d="M5.5 5.5h.01" stroke-width="2.2"/>',
+		download: '<path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2M3 13.5h10"/>',
+		upload: '<path d="M8 10.5v-8M4.8 5.7 8 2.5l3.2 3.2M3 13.5h10"/>',
+		trash: '<path d="M2.5 4.5h11M6.5 4.5V3h3v1.5M4 4.5l.7 8.2c.1.7.6 1.3 1.4 1.3h3.8c.8 0 1.3-.6 1.4-1.3l.7-8.2"/>',
 		copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.2A1.4 1.4 0 0 0 9.2 2.5H4a1.5 1.5 0 0 0-1.5 1.5v5.2c0 .6.3 1.1.8 1.3"/>'
 	} as const;
 	export type IconName = keyof typeof PATHS;

@@ -197,7 +197,7 @@ describe('GET /api/live', () => {
 		return { get, rescans: () => rescans };
 	}
 
-	it('maps entries to session IDs, keeps providers independent, and rescans for new sessions', async () => {
+	it('maps entries to session IDs, keeps providers independent, and rescans once for undiscovered sessions', async () => {
 		const claude = createFixtureAdapter('claude', [fixtureSession('claude', ids.a)]);
 		claude.live = async () => ({
 			state: 'ok',
@@ -218,10 +218,11 @@ describe('GET /api/live', () => {
 			{ provider: 'claude', state: 'ok', detail: 'status' },
 			{ provider: 'codex', state: 'error', reason: 'Live check failed' }
 		]);
-		expect(body.sessions).toEqual([
-			{ sessionId: `claude:${ids.a}`, state: 'waiting', since: null },
-			{ sessionId: `claude:${ids.c}`, state: 'working', since: null }
-		]);
+		// The undiscovered session is not reported; it triggers one rescan, and only one.
+		expect(body.sessions).toEqual([{ sessionId: `claude:${ids.a}`, state: 'waiting', since: null }]);
+		expect(rescans()).toBe(1);
+		await new Promise((r) => setTimeout(r, 1_600)); // past the response cache
+		await get();
 		expect(rescans()).toBe(1);
 	});
 
