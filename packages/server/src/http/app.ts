@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
 	MAX_ARCHIVE_BATCH,
+	MAX_IMPORT_BYTES,
+	MAX_WORKSPACE_NAME,
 	MAX_TAGS_PER_SESSION,
 	MAX_TITLE_LENGTH,
 	normalizeTag,
@@ -19,7 +21,8 @@ import {
 } from '@halcyon/core';
 import { Hono, type Context } from 'hono';
 import { displayCommand, NativeActions } from '../actions/native.js';
-import { NotFoundError, type PlacementInput, type WorkspaceStore } from '../db/workspace-store.js';
+import { ConflictError, DEFAULT_WORKSPACE, NotFoundError, type PlacementInput, type WorkspaceStore } from '../db/workspace-store.js';
+import { parseWorkspaceExport } from './workspace-import.js';
 import { PREVIEW_LIMIT, type DiscoveryService } from '../discovery/discovery-service.js';
 import { contentSecurityPolicy } from './csp.js';
 import type { LiveService } from '../live/live-service.js';
@@ -72,6 +75,7 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 	const api = new Hono();
 	api.onError((error, c) => {
 		if (error instanceof NotFoundError) return c.json<ApiError>({ error: error.message }, 404);
+		if (error instanceof ConflictError) return c.json<ApiError>({ error: error.message }, 409);
 		// Never echo internals; messages may reference local paths.
 		return c.json<ApiError>({ error: 'Internal error' }, 500);
 	});
@@ -186,9 +190,67 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		return c.body(null, 204);
 	});
 
-	// ---------- workspace ----------
+	// ---------- workspaces ----------
+	api.get('/workspaces', (c) => c.json(workspaces.list()));
+
+	api.post('/workspaces', async (c) => {
+		const body = await readJson(c);
+		const name = parseWorkspaceName(body?.name);
+		const copyFrom = body?.copyFrom;
+		if (!name || (copyFrom !== undefined && typeof copyFrom !== 'string')) {
+			return c.json<ApiError>({ error: `Expected { name (1–${MAX_WORKSPACE_NAME} characters), copyFrom?: workspace ID }` }, 400);
+		}
+		return c.json(workspaces.createWorkspace(name, copyFrom as string | undefined), 201);
+	});
+
+	api.patch('/workspaces/:workspaceId', async (c) => {
+		const name = parseWorkspaceName((await readJson(c))?.name);
+		if (!name) return c.json<ApiError>({ error: `Expected a name of 1–${MAX_WORKSPACE_NAME} characters` }, 400);
+		return c.json(workspaces.renameWorkspace(c.req.param('workspaceId'), name));
+	});
+
+	api.delete('/workspaces/:workspaceId', (c) => {
+		workspaces.deleteWorkspace(c.req.param('workspaceId'));
+		return c.body(null, 204);
+	});
+
+	api.get('/workspaces/:workspaceId/export', (c) => {
+		const data = workspaces.exportWorkspace(c.req.param('workspaceId'));
+		const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
+		c.header('Cache-Control', 'no-store');
+		c.header('Content-Disposition', `attachment; filename="halcyon-${slug}.json"`);
+		return c.json(data);
+	});
+
+	api.post('/workspaces/import', async (c) => {
+		const tooBig = () => c.json<ApiError>({ error: 'Import files must be under 5 MB' }, 413);
+		if (Number(c.req.header('content-length') ?? 0) > MAX_IMPORT_BYTES) return tooBig();
+		const text = await c.req.text();
+		if (Buffer.byteLength(text) > MAX_IMPORT_BYTES) return tooBig();
+		let raw: unknown = null;
+		try {
+			raw = JSON.parse(text);
+		} catch {
+			// handled below
+		}
+		const parsed = parseWorkspaceExport(raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null);
+		if (!parsed) return c.json<ApiError>({ error: 'Not a Halcyon workspace export' }, 400);
+		return c.json({ workspace: workspaces.importWorkspace(parsed.data), skipped: parsed.skipped }, 201);
+	});
+
+	// The routes below act on one workspace: `?workspace=<id>`, the default when omitted.
+	const workspaceOf = (c: Context) => c.req.query('workspace') ?? DEFAULT_WORKSPACE;
+	api.use('/workspace/*', async (c, next) => {
+		if (!workspaces.exists(workspaceOf(c))) return c.json<ApiError>({ error: 'Workspace not found' }, 404);
+		await next();
+	});
+	api.use('/workspace', async (c, next) => {
+		if (!workspaces.exists(workspaceOf(c))) return c.json<ApiError>({ error: 'Workspace not found' }, 404);
+		await next();
+	});
+
 	api.get('/workspace', (c) => {
-		const workspace = workspaces.get();
+		const workspace = workspaces.get(workspaceOf(c));
 		return workspace ? c.json(workspace) : c.json<ApiError>({ error: 'Workspace not found' }, 404);
 	});
 
@@ -199,7 +261,7 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		if (!isCoordinate(body?.x) || !isCoordinate(body?.y)) {
 			return c.json<ApiError>({ error: 'Expected finite numeric x and y' }, 400);
 		}
-		workspaces.setPlacement(parsed.id, { x: body.x, y: body.y });
+		workspaces.setPlacement(parsed.id, { x: body.x, y: body.y }, workspaceOf(c));
 		return c.body(null, 204);
 	});
 
@@ -225,7 +287,7 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 				...(zoneId === undefined ? {} : { zoneId: zoneId as number | null })
 			});
 		}
-		workspaces.setPlacements(placements);
+		workspaces.setPlacements(placements, workspaceOf(c));
 		return c.body(null, 204);
 	});
 
@@ -234,7 +296,7 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		if (!isCoordinate(body?.x) || !isCoordinate(body?.y) || !isFiniteNumber(body?.zoom) || body.zoom <= 0) {
 			return c.json<ApiError>({ error: 'Expected finite x, y and positive zoom' }, 400);
 		}
-		workspaces.setViewport({ x: body.x, y: body.y, zoom: body.zoom });
+		workspaces.setViewport({ x: body.x, y: body.y, zoom: body.zoom }, workspaceOf(c));
 		return c.body(null, 204);
 	});
 
@@ -242,14 +304,14 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		const body = await readJson(c);
 		const filter = parseFilter(body);
 		if (filter === undefined) return c.json<ApiError>({ error: 'Expected { tags: string[], mode: "highlight" | "only" } or null' }, 400);
-		workspaces.setFilter(filter);
+		workspaces.setFilter(filter, workspaceOf(c));
 		return c.body(null, 204);
 	});
 
 	api.post('/workspace/zones', async (c) => {
 		const input = parseZone(await readJson(c), false);
 		if (!input) return c.json<ApiError>({ error: 'Expected name, color, x, y, width and height' }, 400);
-		return c.json(workspaces.createZone(input as ZoneInput), 201);
+		return c.json(workspaces.createZone(input as ZoneInput, workspaceOf(c)), 201);
 	});
 
 	api.patch('/workspace/zones/:zoneId', async (c) => {
@@ -257,13 +319,13 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 		if (!Number.isInteger(id) || id <= 0) return c.json<ApiError>({ error: 'Invalid zone ID' }, 400);
 		const changes = parseZone(await readJson(c), true);
 		if (!changes) return c.json<ApiError>({ error: 'Invalid zone fields' }, 400);
-		return c.json(workspaces.updateZone(id, changes));
+		return c.json(workspaces.updateZone(id, changes, workspaceOf(c)));
 	});
 
 	api.delete('/workspace/zones/:zoneId', (c) => {
 		const id = Number(c.req.param('zoneId'));
 		if (!Number.isInteger(id) || id <= 0) return c.json<ApiError>({ error: 'Invalid zone ID' }, 400);
-		workspaces.deleteZone(id);
+		workspaces.deleteZone(id, workspaceOf(c));
 		return c.body(null, 204);
 	});
 
@@ -296,6 +358,12 @@ export function createApp({ discovery, workspaces, allowedHosts, webRoot, action
 	}
 
 	return app;
+}
+
+function parseWorkspaceName(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const name = value.trim();
+	return name && name.length <= MAX_WORKSPACE_NAME && !/[\u0000-\u001f]/.test(name) ? name : null;
 }
 
 function parseZone(body: Record<string, unknown> | null, partial: boolean): Partial<ZoneInput> | null {

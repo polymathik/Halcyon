@@ -45,6 +45,13 @@
 		status?: CardStatus | null;
 	} = $props();
 	const live = $derived(status && status !== 'closed' ? status : null);
+	// Closed (or unknown) sessions fade gently with inactivity: 0 today, about
+	// 0.6 after a week, 1 after a month. Live sessions never fade.
+	const fade = $derived.by(() => {
+		if (live || !session.lastActivityAt) return 0;
+		const days = Math.max(0, (now - Date.parse(session.lastActivityAt)) / 86_400_000);
+		return Math.round(Math.min(1, Math.log2(1 + days) / Math.log2(31)) * 100) / 100;
+	});
 
 	const title = $derived(customTitle ?? displayTitle(session));
 	const named = $derived(!!customTitle || !!session.title);
@@ -80,6 +87,8 @@
 		class:is-highlighted={highlighted}
 		class:is-dimmed={dimmed}
 		class:archived={isArchived}
+		data-live={live ?? 'none'}
+		style:--fade={fade}
 		data-id={session.id}
 		role="button"
 		tabindex="0"
@@ -156,6 +165,26 @@
 		height: calc(var(--provider-mark) * var(--lod, 1));
 		font-size: calc(10px * var(--lod, 1));
 		border-radius: calc(var(--radius-sm) * var(--lod, 1));
+	}
+	/* Border carries live state: working green, needs input amber (the loud one),
+	   open or idle a quiet teal. Selection, highlight and drag keep their own look. */
+	.hc-card:not(.is-selected):not(.is-highlighted):not(.is-dragging)[data-live='working'] {
+		border-color: var(--status-working);
+	}
+	.hc-card:not(.is-selected):not(.is-highlighted):not(.is-dragging)[data-live='waiting'] {
+		border-color: var(--status-waiting);
+		box-shadow: 0 0 0 1px var(--status-waiting), var(--shadow-card);
+	}
+	.hc-card:not(.is-selected):not(.is-highlighted):not(.is-dragging)[data-live='idle'],
+	.hc-card:not(.is-selected):not(.is-highlighted):not(.is-dragging)[data-live='open'] {
+		border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	}
+	/* Not running: border and title fade with days since last activity. */
+	.hc-card:not(.is-selected):not(.is-highlighted)[data-live='none'] {
+		border-color: color-mix(in srgb, var(--border) calc(100% - var(--fade) * 45%), transparent);
+	}
+	.hc-card[data-live='none'] .hc-card__title:not(.untitled) {
+		color: color-mix(in srgb, var(--ink-muted) calc(var(--fade) * 100%), var(--ink));
 	}
 	.hc-card.archived {
 		opacity: 0.6;

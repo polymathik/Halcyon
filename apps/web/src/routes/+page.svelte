@@ -5,6 +5,7 @@
 		type ProviderStatus,
 		type Session,
 		type TagsResponse,
+		type WorkspaceSummary,
 		type Zone,
 		type ZoneColor,
 		type ZoneInput
@@ -42,7 +43,7 @@
 	import { displayTitle, plural, providerMonogram } from '#lib/format.js';
 	import { isRunning, statusMap } from '#lib/live.js';
 	import LiveStatus from '#lib/components/LiveStatus.svelte';
-	import { readPref, writePref } from '#lib/prefs.js';
+	import { readPref, readTextPref, writePref, writeTextPref } from '#lib/prefs.js';
 	import { currentTheme, setTheme, type Theme } from '#lib/theme.js';
 	import type { PageProps } from './$types';
 
@@ -200,9 +201,35 @@
 		for (const [id, list] of next) tagsOf.set(id, list.sort());
 	}
 
-	async function loadWorkspace() {
+	// ---------- workspaces ----------
+	// Layout (positions, zones, camera, filter) belongs to a workspace; tags,
+	// display names and archive state are shared by all of them.
+	let workspaceId = $state(readTextPref('workspace', 'default'));
+	let workspaceList = $state<WorkspaceSummary[]>([]);
+	const workspaceName = $derived(workspaceList.find((w) => w.id === workspaceId)?.name ?? 'Default');
+
+	async function refreshWorkspaces() {
 		try {
-			const workspace = await api.workspace();
+			workspaceList = await api.workspaces();
+		} catch {
+			// The switcher keeps its last list.
+		}
+	}
+
+	async function loadWorkspace() {
+		api.setWorkspace(workspaceId);
+		try {
+			let workspace;
+			try {
+				workspace = await api.workspace();
+			} catch (error) {
+				if (workspaceId === 'default') throw error;
+				// The remembered workspace is gone: fall back to the default.
+				workspaceId = 'default';
+				writeTextPref('workspace', 'default');
+				api.setWorkspace('default');
+				workspace = await api.workspace();
+			}
 			for (const p of workspace.placements) {
 				positions.set(p.sessionId, { x: p.x, y: p.y });
 				zoneOf.set(p.sessionId, p.zoneId);
@@ -211,10 +238,8 @@
 			for (const t of workspace.titles) titlesOf.set(t.sessionId, t.title);
 			for (const id of workspace.archived) archived.add(id);
 			applyTags(workspace);
-			if (workspace.filter) {
-				filterTags = workspace.filter.tags;
-				filterMode = workspace.filter.mode;
-			}
+			filterTags = workspace.filter?.tags ?? [];
+			filterMode = workspace.filter?.mode ?? 'highlight';
 			initialCamera = workspace.viewport ? { x: workspace.viewport.x, y: workspace.viewport.y, z: workspace.viewport.zoom } : null;
 			workspaceError = false;
 			workspaceReady = true;
@@ -224,7 +249,88 @@
 	}
 	onMount(() => {
 		void loadWorkspace();
+		void refreshWorkspaces();
 	});
+
+	async function switchWorkspace(id: string) {
+		wsMenu = null;
+		if (id === workspaceId && workspaceReady) return;
+		workspaceReady = false;
+		toast = null;
+		selectedId = null;
+		multi.clear();
+		renamingZone = null;
+		renamingSession = null;
+		filterText = '';
+		liveOnly = false;
+		positions.clear();
+		zoneOf.clear();
+		zones.clear();
+		tidied = false;
+		workspaceId = id;
+		writeTextPref('workspace', id);
+		await loadWorkspace();
+		void refreshWorkspaces();
+	}
+
+	type WsMenu = { mode: 'list' } | { mode: 'new' | 'duplicate' | 'rename'; value: string } | { mode: 'delete' };
+	let wsMenu = $state<WsMenu | null>(null);
+	let wsBusy = $state(false);
+	let importInput = $state<HTMLInputElement>();
+
+	async function submitWorkspaceName() {
+		if (!wsMenu || !('value' in wsMenu) || wsBusy) return;
+		const name = wsMenu.value.trim();
+		if (!name) return;
+		wsBusy = true;
+		try {
+			if (wsMenu.mode === 'rename') {
+				await api.renameWorkspace(workspaceId, name);
+				await refreshWorkspaces();
+				wsMenu = null;
+			} else {
+				const created = await api.createWorkspace(name, wsMenu.mode === 'duplicate' ? workspaceId : undefined);
+				await switchWorkspace(created.id);
+				showToast(`Created ${created.name}`);
+			}
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : "Couldn't save the workspace");
+		} finally {
+			wsBusy = false;
+		}
+	}
+
+	async function deleteCurrentWorkspace() {
+		const doomed = workspaceList.find((w) => w.id === workspaceId);
+		if (!doomed || doomed.isDefault) return;
+		wsBusy = true;
+		try {
+			await api.deleteWorkspace(doomed.id);
+			await switchWorkspace('default');
+			showToast(`Deleted ${doomed.name}`);
+		} catch {
+			showToast("Couldn't delete the workspace");
+		} finally {
+			wsBusy = false;
+		}
+	}
+
+	async function importWorkspaceFile(file: File | undefined) {
+		if (!file) return;
+		wsMenu = null;
+		if (file.size > 5 * 1024 * 1024) return showToast('Import files must be under 5 MB');
+		try {
+			const result = await api.importWorkspace(await file.text());
+			await switchWorkspace(result.workspace.id);
+			showToast(
+				`Imported ${result.workspace.name}${result.skipped ? ` · skipped ${plural(result.skipped, 'invalid entry', 'invalid entries')}` : ''}`
+			);
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : "Couldn't import that file");
+		} finally {
+			if (importInput) importInput.value = '';
+		}
+	}
 
 	// ---------- layout engine ----------
 	// Zones are containers: their cards sit in a grid with no overlaps, the width
@@ -617,6 +723,63 @@
 	}
 
 	/**
+	 * One zone per tag, named "#tag". A session can be in only one zone, so a
+	 * session with several tags joins the zone of its most common tag (ties go
+	 * alphabetically). Tag zones that already exist are reused. Untagged
+	 * sessions stay where they are. Undo restores everything.
+	 */
+	async function arrangeByTag() {
+		menuOpen = false;
+		if (!canvas) return;
+		const shown = sessions.filter((s) => positions.has(s.id) && (tagsOf.get(s.id)?.length ?? 0) > 0);
+		if (shown.length === 0) return showToast('No tagged sessions to arrange');
+		const count = new Map<string, number>();
+		for (const s of shown) for (const t of tagsOf.get(s.id)!) count.set(t, (count.get(t) ?? 0) + 1);
+		const pick = (tags: string[]) => [...tags].sort((a, b) => count.get(b)! - count.get(a)! || a.localeCompare(b))[0]!;
+		const groups = new Map<string, string[]>();
+		for (const s of shown) {
+			const tag = pick(tagsOf.get(s.id)!);
+			groups.set(tag, [...(groups.get(tag) ?? []), s.id]);
+		}
+		const existing = new Map([...zones.values()].map((z) => [z.name.toLowerCase(), z.id]));
+		const joining = new Map<number, string[]>();
+		const fresh: [string, string[]][] = [];
+		for (const [tag, ids] of [...groups].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
+			const zoneId = existing.get(`#${tag}`);
+			if (zoneId !== undefined) joining.set(zoneId, ids.filter((id) => zoneOf.get(id) !== zoneId));
+			else fresh.push([tag, ids]);
+		}
+		const moving = [...joining.values(), ...fresh.map(([, ids]) => ids)].flat();
+		if (moving.length === 0) return showToast('Already arranged by tag');
+		const previousZones = [...new Set(moving.map((id) => zoneOf.get(id)).filter((z): z is number => z != null))];
+		const snap = snapshot(moving, [...new Set([...previousZones, ...joining.keys()])]);
+		const changed = newChanges();
+		try {
+			const created = await createZonesFor(
+				fresh.map(([tag, ids], i) => ({ name: `#${tag}`.slice(0, 80), projectPath: null, ids, color: ZONE_COLORS[(zones.size + i) % ZONE_COLORS.length]! })),
+				changed
+			);
+			for (const [zoneId, ids] of joining) {
+				const zone = zones.get(zoneId)!;
+				ids.forEach((id, k) => {
+					zoneOf.set(id, zoneId);
+					positions.set(id, { x: zone.x + zone.width + k, y: zone.y + zone.height + 10_000 + k });
+					changed.cards.add(id);
+				});
+				reflowZone(zoneId, changed);
+			}
+			for (const z of previousZones) if (zones.has(z)) reflowZone(z, changed);
+			persist(changed);
+			canvas.fitAll();
+			showToast(`Arranged ${plural(moving.length, 'session')} into ${plural(created.length + joining.size, 'tag zone')}`, () =>
+				restore(snap, created)
+			);
+		} catch {
+			saveFailed();
+		}
+	}
+
+	/**
 	 * One zone per project (git repository root when found) for every session
 	 * not already in a zone. Projects with a single session share an "Other
 	 * folders" zone. Sessions whose project already has a zone join it. New
@@ -967,6 +1130,7 @@
 			</div>
 		</div>
 	{:else if workspaceReady}
+		{#key workspaceId}
 		<Canvas
 			bind:this={canvas}
 			{sessions}
@@ -1007,6 +1171,7 @@
 			onfocusfilter={() => tagFilter?.focus()}
 			oncamera={cameraChanged}
 		/>
+		{/key}
 
 		{#if problems.length || !bannerDismissed}
 			<div class="banners" aria-live="polite">
@@ -1045,7 +1210,19 @@
 			Halcyon
 		</span>
 		<span class="hc-sep brand-sep"></span>
-		<span class="hc-ws workspace">Default workspace</span>
+		<button
+			class="hc-ws workspace"
+			aria-haspopup="menu"
+			aria-expanded={wsMenu !== null}
+			onclick={() => {
+				menuOpen = false;
+				wsMenu = wsMenu ? null : { mode: 'list' };
+				void refreshWorkspaces();
+			}}
+			title="Switch workspace"
+		>
+			{workspaceName}<Icon name="chevron" size={12} />
+		</button>
 		<div class="hc-spacer"></div>
 		{#if workspaceReady && sessions.length}
 			<TagFilter
@@ -1114,10 +1291,95 @@
 		</button>
 	</header>
 
+	{#if wsMenu}
+		<div class="hc-pop ws-menu" role="menu" aria-label="Workspaces">
+			{#if wsMenu.mode === 'list'}
+				{#each workspaceList as w (w.id)}
+					<button class="hc-pop__row" role="menuitemradio" aria-checked={w.id === workspaceId} onclick={() => switchWorkspace(w.id)}>
+						<span class="check">{#if w.id === workspaceId}<Icon name="check" size={13} />{/if}</span>
+						<span class="ws-name">{w.name}</span>
+						<span class="n">{plural(w.cardCount, 'card')}{w.zoneCount ? ` · ${plural(w.zoneCount, 'zone')}` : ''}</span>
+					</button>
+				{/each}
+				<div class="divider"></div>
+				<button class="hc-pop__row" role="menuitem" onclick={() => (wsMenu = { mode: 'new', value: '' })}>
+					<Icon name="plus" />New workspace <span class="n">cards laid out fresh</span>
+				</button>
+				<button class="hc-pop__row" role="menuitem" onclick={() => (wsMenu = { mode: 'duplicate', value: `${workspaceName} copy` })}>
+					<Icon name="copy" />Duplicate this workspace
+				</button>
+				<button class="hc-pop__row" role="menuitem" onclick={() => (wsMenu = { mode: 'rename', value: workspaceName })}>
+					<Icon name="pencil" />Rename
+				</button>
+				<div class="divider"></div>
+				<a class="hc-pop__row" role="menuitem" href={api.exportUrl(workspaceId)} download onclick={() => (wsMenu = null)}>
+					<Icon name="download" />Export to file <span class="n">.json</span>
+				</a>
+				<button class="hc-pop__row" role="menuitem" onclick={() => importInput?.click()}>
+					<Icon name="upload" />Import from file
+				</button>
+				{#if workspaceId !== 'default'}
+					<div class="divider"></div>
+					<button class="hc-pop__row danger" role="menuitem" onclick={() => (wsMenu = { mode: 'delete' })}>
+						<Icon name="trash" />Delete workspace
+					</button>
+				{/if}
+			{:else if wsMenu.mode === 'delete'}
+				<div class="ws-form">
+					<p>Delete <b>{workspaceName}</b>? Its zones and layout go; sessions, tags and names stay. Export it first to keep a copy.</p>
+					<div class="ws-actions">
+						<button class="hc-btn hc-btn--sm" onclick={() => (wsMenu = { mode: 'list' })}>Cancel</button>
+						<button class="hc-btn hc-btn--sm danger-btn" disabled={wsBusy} onclick={deleteCurrentWorkspace}>Delete workspace</button>
+					</div>
+				</div>
+			{:else}
+				<form
+					class="ws-form"
+					onsubmit={(e) => {
+						e.preventDefault();
+						void submitWorkspaceName();
+					}}
+				>
+					<label for="ws-name">{wsMenu.mode === 'rename' ? 'Rename workspace' : wsMenu.mode === 'duplicate' ? 'Name the copy' : 'New workspace'}</label>
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						id="ws-name"
+						class="ws-input"
+						maxlength="60"
+						autofocus
+						bind:value={wsMenu.value}
+						onkeydown={(e) => {
+							if (e.key === 'Escape') {
+								e.stopPropagation();
+								wsMenu = { mode: 'list' };
+							}
+						}}
+					/>
+					<div class="ws-actions">
+						<button type="button" class="hc-btn hc-btn--sm" onclick={() => (wsMenu = { mode: 'list' })}>Cancel</button>
+						<button type="submit" class="hc-btn hc-btn--sm hc-btn--primary" disabled={wsBusy || !wsMenu.value.trim()}>
+							{wsMenu.mode === 'rename' ? 'Rename' : 'Create'}
+						</button>
+					</div>
+				</form>
+			{/if}
+		</div>
+	{/if}
+	<input
+		bind:this={importInput}
+		type="file"
+		accept="application/json,.json"
+		hidden
+		onchange={(e) => importWorkspaceFile(e.currentTarget.files?.[0])}
+	/>
+
 	{#if menuOpen}
 		<div class="hc-pop menu" role="menu">
 			<button class="hc-pop__row" role="menuitem" onclick={groupByProject}>
 				<Icon name="group" />Group by project <span class="n">zones per repo</span>
+			</button>
+			<button class="hc-pop__row" role="menuitem" onclick={arrangeByTag} disabled={tagCounts.length === 0}>
+				<Icon name="tag" />Arrange by tag <span class="n">zone per tag</span>
 			</button>
 			<button class="hc-pop__row" role="menuitemcheckbox" aria-checked={showArchived} onclick={toggleShowArchived}>
 				<Icon name="archive" />Show archived <span class="n">{showArchived ? 'On' : 'Off'} · {archivedCount}</span>
@@ -1232,11 +1494,77 @@
 		fill: var(--accent);
 	}
 	.workspace {
-		cursor: default;
+		max-width: 220px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-	.workspace:hover {
-		background: transparent;
+	.ws-menu {
+		position: absolute;
+		top: calc(var(--topbar-height) + 4px);
+		left: 132px;
+		width: 300px;
+		max-height: min(70vh, 560px);
+		overflow-y: auto;
+		z-index: calc(var(--z-panel) + 10);
+	}
+	.ws-menu .check {
+		width: 14px;
+		display: inline-flex;
+		color: var(--accent);
+	}
+	.ws-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ws-menu a.hc-pop__row {
+		color: inherit;
+		text-decoration: none;
+	}
+	.ws-menu .danger {
+		color: var(--status-error);
+	}
+	.ws-form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		padding: var(--space-2);
+		font: 450 12.5px/18px var(--font-sans);
 		color: var(--ink-muted);
+	}
+	.ws-form p {
+		margin: 0;
+	}
+	.ws-form label {
+		font: 550 12px/16px var(--font-sans);
+		color: var(--ink);
+	}
+	.ws-input {
+		height: var(--control-height);
+		padding: 0 8px;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--ink);
+		font: 400 13px/1 var(--font-sans);
+		outline: 0;
+	}
+	.ws-input:focus {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 3px var(--accent-soft);
+	}
+	.danger-btn {
+		background: var(--status-error);
+		border-color: var(--status-error);
+		color: var(--on-accent);
+	}
+	.ws-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--space-2);
 	}
 	.providers {
 		display: flex;

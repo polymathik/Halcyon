@@ -161,6 +161,50 @@ export interface WorkspaceResponse {
 	filter: SavedFilter | null;
 }
 
+/** `GET /api/workspaces`: every workspace, the default first. */
+export interface WorkspaceSummary {
+	id: string;
+	name: string;
+	createdAt: string;
+	cardCount: number;
+	zoneCount: number;
+	/** The default workspace always exists and cannot be deleted. */
+	isDefault: boolean;
+}
+
+export const MAX_WORKSPACE_NAME = 60;
+export const MAX_WORKSPACES = 50;
+/** Largest export file accepted by `POST /api/workspaces/import`. */
+export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+export const WORKSPACE_EXPORT_FORMAT = 'halcyon-workspace';
+
+/**
+ * A workspace as a portable file. Layout (zones, card positions, viewport,
+ * filter) belongs to the workspace; tags, display names and archive state are
+ * shared across workspaces and travel along so a backup is complete. Zone IDs
+ * are local to the file. No transcript content, ever.
+ */
+export interface WorkspaceExport {
+	format: typeof WORKSPACE_EXPORT_FORMAT;
+	version: 1;
+	exportedAt: string;
+	name: string;
+	viewport: Viewport | null;
+	filter: SavedFilter | null;
+	zones: (ZoneInput & { ref: number })[];
+	placements: { sessionId: SessionId; x: number; y: number; zone: number | null }[];
+	tags: { sessionId: SessionId; tags: string[] }[];
+	titles: { sessionId: SessionId; title: string }[];
+	archived: SessionId[];
+}
+
+/** `POST /api/workspaces/import` response. */
+export interface WorkspaceImportResult {
+	workspace: WorkspaceSummary;
+	/** Entries skipped because they were invalid. */
+	skipped: number;
+}
+
 export interface ApiError {
 	error: string;
 }

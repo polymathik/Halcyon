@@ -26,6 +26,8 @@ export class LiveService {
 	private cached: { at: number; value: LiveResponse } | null = null;
 	private inflight: Promise<LiveResponse> | null = null;
 	private lastRescan = 0;
+	/** Running sessions Halcyon has already rescanned for once (some are never shown, e.g. Codex desktop chats). */
+	private readonly rescanned = new Set<string>();
 
 	constructor(private readonly deps: LiveServiceDeps) {}
 
@@ -44,7 +46,7 @@ export class LiveService {
 		const known = this.deps.knownSessions();
 		const response: LiveResponse = { checkedAt: new Date().toISOString(), providers: [], sessions: [] };
 		const seen = new Set<string>();
-		let unknown = false;
+		const pending = new Set<string>();
 
 		for (const { adapter, live } of results) {
 			if (!live) continue;
@@ -65,9 +67,11 @@ export class LiveService {
 				}
 				if (!id && entry.sourcePath) id = this.deps.sessionForSource(entry.sourcePath);
 				if (!id && entry.nativeId && isValidNativeId(entry.nativeId)) {
-					// Running but not discovered yet (just started): rescan so it appears.
-					id = toSessionId(adapter.provider, entry.nativeId);
-					unknown = true;
+					// Running but not on the canvas: either just started (a rescan picks it
+					// up) or a kind Halcyon never shows. Rescan once per session, never report it.
+					const candidate = toSessionId(adapter.provider, entry.nativeId);
+					if (!this.rescanned.has(candidate)) pending.add(candidate);
+					continue;
 				}
 				if (!id || seen.has(id)) continue;
 				seen.add(id);
@@ -75,8 +79,10 @@ export class LiveService {
 			}
 		}
 
-		if (unknown && Date.now() - this.lastRescan > RESCAN_INTERVAL_MS) {
+		if (this.rescanned.size > 10_000) this.rescanned.clear();
+		if (pending.size && Date.now() - this.lastRescan > RESCAN_INTERVAL_MS) {
 			this.lastRescan = Date.now();
+			for (const id of pending) this.rescanned.add(id);
 			this.deps.rescan();
 		}
 		this.cached = { at: Date.now(), value: response };

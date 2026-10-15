@@ -18,3 +18,20 @@ export function writePref(key: string, value: boolean): void {
 		// Applies for this page only.
 	}
 }
+
+/** A remembered short string (such as the last workspace ID); same fallbacks. */
+export function readTextPref(key: string, fallback: string): string {
+	try {
+		return localStorage.getItem(`halcyon.${key}`) ?? fallback;
+	} catch {
+		return fallback;
+	}
+}
+
+export function writeTextPref(key: string, value: string): void {
+	try {
+		localStorage.setItem(`halcyon.${key}`, value);
+	} catch {
+		// Applies for this page only.
+	}
+}
