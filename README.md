@@ -20,10 +20,10 @@ Halcyon finds the AI coding sessions already on your machine — Claude Code, Co
 
 It doesn't replace your agents or wrap their terminals. It reads the session files they already keep, never changes them, and hands you back to the native CLI when you want to continue.
 
+- [Quick start](#quick-start)
 - [Why Halcyon](#why-halcyon)
 - [Features](#features)
 - [Supported agents](#supported-agents)
-- [Quick start](#quick-start)
 - [Using Halcyon](#using-halcyon)
 - [Privacy and safety](#privacy-and-safety)
 - [How it works](#how-it-works)
@@ -31,6 +31,54 @@ It doesn't replace your agents or wrap their terminals. It reads the session fil
 - [Status and limitations](#status-and-limitations)
 - [Contributing](#contributing)
 - [Licence](#licence)
+
+## Quick start
+
+**Requirements:** Node.js **22.17 or newer** (Halcyon uses the built-in `node:sqlite`). macOS and Linux are fully supported; on Windows everything except *Resume in terminal* works (copy the command instead).
+
+```bash
+npx halcyon-ai               # run without installing
+npm install -g halcyon-ai    # or install the `halcyon` command
+halcyon
+```
+
+### From source
+
+Building from source also needs [pnpm](https://pnpm.io) 10.
+
+```bash
+git clone https://github.com/sarupurisailalith/Halcyon.git
+cd Halcyon
+pnpm install
+pnpm build
+pnpm start            # or: node packages/server/dist/cli.js
+```
+
+Halcyon starts on `http://127.0.0.1:4317` (or the next free port) and opens your browser. Press `Ctrl+C` to stop it.
+
+To install the `halcyon` command globally from a local build:
+
+```bash
+pnpm --filter halcyon-ai run package     # writes packages/server/release/halcyon-ai-<version>.tgz
+npm install -g packages/server/release/halcyon-ai-*.tgz
+halcyon
+```
+
+Want to look around first without touching your own sessions? Run the demo:
+
+```bash
+node packages/server/dist/cli.js --fixtures
+```
+
+### Command-line options
+
+| Option | Description |
+|---|---|
+| `-p, --port <n>` | Port to listen on (default `4317`; tries the next few if busy, unless a port is given) |
+| `--no-open` | Don't open a browser |
+| `--fixtures` | Show synthetic demo sessions instead of real ones (actions never start a process) |
+| `--data-dir <dir>` | Where Halcyon keeps its database (default `~/.halcyon`, or `$HALCYON_HOME`) |
+| `-h, --help` | Show help |
 
 ## Why Halcyon
 
@@ -104,54 +152,6 @@ Halcyon reads each agent's own local store, lists only top-level sessions you co
 "—" means the agent publishes no live signal, so Halcyon shows last activity instead of guessing. Agents you don't have installed are listed as "not found" in the **⋯** menu and otherwise stay out of the way.
 
 Each agent's usual environment overrides are honoured, for example `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CURSOR_CONFIG_DIR` / `CURSOR_DATA_DIR`, `GEMINI_CLI_HOME`, `QWEN_HOME`, `COPILOT_HOME`, `OPENCODE_DB`, `KILO_DB`, `CRUSH_GLOBAL_DATA`, `GOOSE_PATH_ROOT` and `XDG_DATA_HOME` / `XDG_CONFIG_HOME` / `XDG_STATE_HOME`.
-
-## Quick start
-
-**Requirements:** Node.js **22.17 or newer** (Halcyon uses the built-in `node:sqlite`). macOS and Linux are fully supported; on Windows everything except *Resume in terminal* works (copy the command instead).
-
-```bash
-npx halcyon-ai               # run without installing
-npm install -g halcyon-ai    # or install the `halcyon` command
-halcyon
-```
-
-### From source
-
-Building from source also needs [pnpm](https://pnpm.io) 10.
-
-```bash
-git clone https://github.com/sarupurisailalith/Halcyon.git
-cd Halcyon
-pnpm install
-pnpm build
-pnpm start            # or: node packages/server/dist/cli.js
-```
-
-Halcyon starts on `http://127.0.0.1:4317` (or the next free port) and opens your browser. Press `Ctrl+C` to stop it.
-
-To install the `halcyon` command globally from a local build:
-
-```bash
-pnpm --filter halcyon-ai run package     # writes packages/server/release/halcyon-ai-<version>.tgz
-npm install -g packages/server/release/halcyon-ai-*.tgz
-halcyon
-```
-
-Want to look around first without touching your own sessions? Run the demo:
-
-```bash
-node packages/server/dist/cli.js --fixtures
-```
-
-### Command-line options
-
-| Option | Description |
-|---|---|
-| `-p, --port <n>` | Port to listen on (default `4317`; tries the next few if busy, unless a port is given) |
-| `--no-open` | Don't open a browser |
-| `--fixtures` | Show synthetic demo sessions instead of real ones (actions never start a process) |
-| `--data-dir <dir>` | Where Halcyon keeps its database (default `~/.halcyon`, or `$HALCYON_HOME`) |
-| `-h, --help` | Show help |
 
 ## Using Halcyon
 
