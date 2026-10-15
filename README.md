@@ -10,7 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sarupurisailalith/Halcyon/actions/workflows/ci.yml"><img src="https://github.com/sarupurisailalith/Halcyon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache%202.0-0b7285" alt="Licence: Apache 2.0"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A522.17-0b7285" alt="Node.js 22.17 or later">
 </p>
