@@ -65,7 +65,7 @@ writeFileSync(
 			version: pkg.version,
 			description: pkg.description,
 			type: 'module',
-			bin: { halcyon: './dist/cli.js' },
+			bin: { halcyon: 'dist/cli.js' },
 			files: ['dist', 'NOTICE', 'THIRD_PARTY_NOTICES.md'],
 			engines: pkg.engines,
 			license: pkg.license,

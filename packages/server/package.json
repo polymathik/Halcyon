@@ -26,7 +26,7 @@
   ],
   "type": "module",
   "bin": {
-    "halcyon": "./dist/cli.js"
+    "halcyon": "dist/cli.js"
   },
   "exports": {
     ".": {
