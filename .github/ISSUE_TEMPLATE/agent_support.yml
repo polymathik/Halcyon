@@ -1,0 +1,42 @@
+name: Agent support
+description: An agent's sessions are missing or wrong, or you'd like a new agent supported.
+labels: [adapter]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Halcyon reads each agent's session files, whose formats are undocumented and change between releases. **Never attach real session files.** File names, folder layout and field names (not values) are what we need.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request
+      options:
+        - A supported agent misbehaves
+        - Support a new agent
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and exact version
+      placeholder: gemini 0.12.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you see
+      description: For example "3 sessions in the agent's resume list, none in Halcyon", or "titles are empty". Include the status Halcyon shows for the agent in the ⋯ menu.
+    validations:
+      required: true
+  - type: textarea
+    id: layout
+    attributes:
+      label: Where the agent stores sessions
+      description: Folder layout and file types, e.g. the output of `ls -R ~/.agent | head -40` with private names replaced. For a new agent, also the command that resumes a session.

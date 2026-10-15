@@ -43,17 +43,40 @@ writeFileSync(
 			description: pkg.description,
 			type: 'module',
 			bin: { halcyon: './dist/cli.js' },
-			files: ['dist'],
+			files: ['dist', 'NOTICE', 'THIRD_PARTY_NOTICES.md'],
 			engines: pkg.engines,
-			license: pkg.license ?? 'UNLICENSED'
+			license: pkg.license,
+			author: pkg.author,
+			homepage: pkg.homepage,
+			repository: { type: 'git', url: pkg.repository.url },
+			bugs: pkg.bugs,
+			keywords: pkg.keywords
 		},
 		null,
 		2
 	) + '\n'
 );
+// Licence, notices and a short README travel with the package.
+for (const file of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
+	cpSync(here(`../../../${file}`), here(`../release/${file}`));
+}
 writeFileSync(
 	here('../release/README.md'),
-	`# Halcyon\n\nA calm, spatial canvas for your local Claude Code and Codex CLI sessions.\n\n\`\`\`\nhalcyon            # start on 127.0.0.1:4317 and open your browser\nhalcyon --help\n\`\`\`\n\nEverything stays on this machine: the server binds to 127.0.0.1, sends no telemetry and needs no account.\n`
+	[
+		'# Halcyon',
+		'',
+		'One calm canvas for every AI coding session on your machine: Claude Code, Codex CLI, Cursor CLI, Gemini CLI, Qwen Code, GitHub Copilot CLI, OpenCode, Kilo Code, Crush and Goose.',
+		'',
+		'```',
+		'halcyon            # start on 127.0.0.1:4317 and open your browser',
+		'halcyon --help',
+		'```',
+		'',
+		'Everything stays on this machine: the server binds to 127.0.0.1, sends no telemetry and needs no account.',
+		'',
+		`Documentation: ${pkg.homepage}. Licensed under the Apache License 2.0.`,
+		''
+	].join('\n')
 );
 const tarball = execFileSync('npm', ['pack', '--silent'], { cwd: out, encoding: 'utf8' }).trim();
 console.log(`Packed release/${tarball}`);

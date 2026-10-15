@@ -1,6 +1,17 @@
 {
 	"name": "web",
 	"private": true,
+	"license": "Apache-2.0",
+	"author": "Sailalith Sarupuri",
+	"homepage": "https://github.com/sarupurisailalith/Halcyon#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sarupurisailalith/Halcyon.git",
+		"directory": "apps/web"
+	},
+	"bugs": {
+		"url": "https://github.com/sarupurisailalith/Halcyon/issues"
+	},
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
