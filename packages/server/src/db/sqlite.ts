@@ -27,3 +27,15 @@ export function openDatabase(path: string): Database {
 	db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 2000;');
 	return db;
 }
+
+/**
+ * Opens another program's SQLite database read-only (a provider's session
+ * store). Never writes, never creates the file; waits briefly on the writer's
+ * lock. WAL databases are read through their -wal file, so results are current.
+ */
+export function openReadOnlyDatabase(path: string): Database {
+	const { DatabaseSync } = loadSqlite();
+	const db = new DatabaseSync(path, { readOnly: true });
+	db.exec('PRAGMA busy_timeout = 2000;');
+	return db;
+}
