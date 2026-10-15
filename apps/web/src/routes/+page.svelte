@@ -1539,7 +1539,7 @@
 		color: inherit;
 		text-decoration: none;
 	}
-	.ws-menu .danger {
+	.ws-menu button.hc-pop__row.danger {
 		color: var(--status-error);
 	}
 	.ws-form {
@@ -1632,11 +1632,20 @@
 		max-height: calc(100vh - 64px);
 		overflow-y: auto;
 	}
-	.menu button.hc-pop__row {
+	.menu button.hc-pop__row,
+	.ws-menu button.hc-pop__row {
 		width: 100%;
 		border: 0;
 		background: transparent;
 		text-align: left;
+		color: var(--ink);
+		font: inherit;
+		font-size: 13px;
+	}
+	.menu button.hc-pop__row:hover,
+	.ws-menu button.hc-pop__row:hover,
+	.ws-menu a.hc-pop__row:hover {
+		background: var(--surface-hover);
 	}
 	.keys {
 		display: grid;

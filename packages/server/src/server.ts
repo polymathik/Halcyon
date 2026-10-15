@@ -11,6 +11,7 @@ import { openDatabase, type Database } from './db/sqlite.js';
 import { WorkspaceStore } from './db/workspace-store.js';
 import { DiscoveryService } from './discovery/discovery-service.js';
 import { createApp } from './http/app.js';
+import type { NativeActions } from './actions/native.js';
 import { LiveService } from './live/live-service.js';
 import { createProcessProbe } from './live/process-probe.js';
 
@@ -23,6 +24,8 @@ export interface StartOptions {
 	webRoot?: string | null;
 	/** Process facts for live state; defaults to the real system probe. */
 	probe?: ProcessProbe;
+	/** Native actions; defaults to launching real terminals. */
+	actions?: NativeActions;
 }
 
 export interface RunningServer {
@@ -80,6 +83,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		workspaces: new WorkspaceStore(db),
 		allowedHosts: [`${LOOPBACK}:${port}`, `localhost:${port}`],
 		webRoot,
+		...(options.actions ? { actions: options.actions } : {}),
 		live: new LiveService({
 			adapters: options.adapters,
 			probe: options.probe ?? createProcessProbe(),
