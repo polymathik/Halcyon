@@ -3,6 +3,27 @@
   "version": "0.0.1",
   "private": true,
   "description": "Local-first canvas for your AI coding CLI sessions",
+  "license": "Apache-2.0",
+  "author": "Sailalith Sarupuri",
+  "homepage": "https://github.com/sarupurisailalith/Halcyon#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarupurisailalith/Halcyon.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/sarupurisailalith/Halcyon/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "coding-agents",
+    "sessions",
+    "canvas",
+    "local-first",
+    "cli"
+  ],
   "type": "module",
   "bin": {
     "halcyon": "./dist/cli.js"

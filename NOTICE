@@ -1,0 +1,14 @@
+Halcyon
+Copyright 2026 Sailalith Sarupuri
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product bundles third-party software and fonts under their own licences:
+the Geist and Geist Mono typefaces (SIL Open Font License 1.1) and several
+MIT-licensed JavaScript packages. See THIRD_PARTY_NOTICES.md for the list and
+the full licence texts.
+
+Halcyon is an independent project. It is not affiliated with, endorsed by or
+sponsored by Anthropic, OpenAI, Google, GitHub, Cursor, Alibaba, SST, Kilo
+Code, Charm or Block. The names of the coding agents it supports are used only
+to identify them and belong to their owners.

@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Halcyon doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Please don't paste or attach session transcripts** — they can contain code, prompts and credentials. Describe what you saw instead. Security problems go through [SECURITY.md](https://github.com/sarupurisailalith/Halcyon/security/policy), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Halcyon showed instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If you can reproduce it with `halcyon --fixtures`, say so — that helps a lot.
+  - type: input
+    id: version
+    attributes:
+      label: Halcyon version or commit
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS, Node.js version and browser
+      placeholder: macOS 26.1, Node 22.17, Safari 26
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version, if relevant
+      placeholder: Claude Code 2.1.283
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output or screenshots
+      description: Check them for private paths or text before posting.

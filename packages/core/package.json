@@ -3,6 +3,17 @@
   "version": "0.0.1",
   "private": true,
   "description": "Provider-independent session model and adapter contract for Halcyon",
+  "license": "Apache-2.0",
+  "author": "Sailalith Sarupuri",
+  "homepage": "https://github.com/sarupurisailalith/Halcyon#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarupurisailalith/Halcyon.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/sarupurisailalith/Halcyon/issues"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -10,7 +21,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b"
   }

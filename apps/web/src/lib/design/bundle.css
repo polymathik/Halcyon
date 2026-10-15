@@ -1,10 +1,12 @@
 /* Halcyon design system component styles (hc-*), vendored from the Halcyon design system
-   artifact, version 1791993987-ad44 (2026-10-14). Do not edit by hand: update the design system
-   and re-vendor. Change from upstream: the Google Fonts @import is removed because Halcyon is
-   local-first; fonts are self-hosted via @fontsource (see app.css). */
+   artifact, version 1792056791-1388 (2026-10-15). Do not edit by hand: update the design system
+   and re-vendor. The app loads the same Geist faces from @fontsource-variable (see app.css)
+   instead of the design system's fonts/ files; family names match --font-sans and --font-mono. */
 
 /* Halcyon component styles. Every value is a token from tokens.css; motion lives here
-   because tokens.json has no motion family. Prefix: hc- */
+   because tokens.json has no motion family. Prefix: hc-
+   Fonts are self-hosted (Geist, Geist Mono): tokens.css carries the @font-face rules.
+   No CDN or Google Fonts request. */
 :root {
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --dur-instant: 80ms;

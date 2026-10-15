@@ -9,6 +9,12 @@
   <b>Local-first</b> · <b>No account, no API key</b> · <b>Read-only on your agents' files</b> · <b>10 coding agents</b>
 </p>
 
+<p align="center">
+  <a href="https://github.com/sarupurisailalith/Halcyon/actions/workflows/ci.yml"><img src="https://github.com/sarupurisailalith/Halcyon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache%202.0-0b7285" alt="Licence: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A522.17-0b7285" alt="Node.js 22.17 or later">
+</p>
+
 ---
 
 Halcyon finds the AI coding sessions already on your machine — Claude Code, Codex, Cursor, Gemini, Copilot and more — and lays them out as cards on one infinite canvas. You see which ones are working or waiting for you, group them into zones, tag them, and jump back into any of them in its own terminal and folder.
@@ -24,6 +30,8 @@ It doesn't replace your agents or wrap their terminals. It reads the session fil
 - [How it works](#how-it-works)
 - [Development](#development)
 - [Status and limitations](#status-and-limitations)
+- [Contributing](#contributing)
+- [Licence](#licence)
 
 ## Why Halcyon
 
@@ -193,6 +201,8 @@ Session transcripts can contain secrets, so Halcyon is deliberately conservative
 - **No shell interpolation.** Native actions launch executables with argument arrays. Session IDs are validated per agent (UUIDs or safe tokens that can never start with `-`) and folders are checked before anything runs.
 - **Your data:** Halcyon's own database lives at `~/.halcyon/halcyon.db` (or `$HALCYON_HOME`). Delete the folder to reset it.
 
+The full details are in [PRIVACY.md](PRIVACY.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## How it works
 
 ```mermaid
@@ -274,6 +284,16 @@ Halcyon is early software, built and used daily by one developer.
 - **Live status** exists only where the agent publishes a signal (see the table above). Copilot's in-use lock detection is unverified.
 - **Not included:** cloud sync, multiple users, cost analytics, or sending prompts into sessions. An optional oversight agent (exposing Halcyon to one of your own coding agents over MCP, with every action confirmed by you) is planned.
 - **Not supported:** agents that keep sessions only in the cloud (Amp) or have no resumable sessions (Aider).
+
+## Contributing
+
+Bug reports, agent-support reports and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); it covers setup, the pull-request checklist and how to add an agent. Please never attach real session files to an issue — describe the folder layout and field names instead. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Licence
+
+Halcyon is licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Sailalith Sarupuri; see [NOTICE](NOTICE).
+
+It bundles the Geist and Geist Mono typefaces (SIL Open Font License 1.1) and a few MIT-licensed packages, listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Halcyon is an independent project, not affiliated with or endorsed by the makers of any agent it supports; their names are used only to identify them.
 
 ---
 
