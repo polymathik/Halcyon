@@ -25,7 +25,8 @@ import { assertInside } from '../preview.js';
 import { previewCodexRollout } from './preview.js';
 import { codexLive } from './live.js';
 
-const PARSER_VERSION = 1;
+// 2: adds sessionBranch.
+const PARSER_VERSION = 2;
 
 export interface CodexAdapterOptions {
 	/** Codex home directory. Defaults to `$CODEX_HOME`, then `~/.codex`. */
@@ -60,6 +61,7 @@ interface BaseFacts {
 	startedAt: string | null;
 	activity: { at: string; source: ActivitySource } | null;
 	userTurnCount: number | null;
+	sessionBranch: string | null;
 	cachedTitle: { title: string; source: TitleSource } | null;
 }
 
@@ -189,6 +191,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
 					if (parsed.facts.idMismatch) counts.idMismatch++;
 					base = {
 						...parsed.facts,
+						sessionBranch: parsed.facts.branch,
 						activity: parsed.facts.lastRecordAt ? { at: parsed.facts.lastRecordAt, source: 'transcript' } : null,
 						cachedTitle: null
 					};
@@ -341,6 +344,7 @@ function fromCachedSession(session: Session): BaseFacts {
 				? { at: session.lastActivityAt, source: session.lastActivitySource }
 				: null,
 		userTurnCount: session.userTurnCount,
+		sessionBranch: session.sessionBranch ?? null,
 		cachedTitle: session.title && session.titleSource ? { title: session.title, source: session.titleSource } : null
 	};
 }
@@ -378,7 +382,8 @@ function buildSession(
 		startedAt: base.startedAt,
 		lastActivityAt: activity.at,
 		lastActivitySource: activity.source,
-		userTurnCount: base.userTurnCount
+		userTurnCount: base.userTurnCount,
+		sessionBranch: base.sessionBranch
 	};
 }
 
@@ -397,7 +402,8 @@ function mergeSegments(a: DiscoveredSession, b: DiscoveredSession): DiscoveredSe
 		session: {
 			...newer.session,
 			startedAt: starts.length > 0 ? starts.sort()[0]! : null,
-			projectPath: newer.session.projectPath ?? older.session.projectPath
+			projectPath: newer.session.projectPath ?? older.session.projectPath,
+			sessionBranch: newer.session.sessionBranch ?? older.session.sessionBranch ?? null
 		}
 	};
 }

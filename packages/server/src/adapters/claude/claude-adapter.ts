@@ -22,7 +22,8 @@ import { previewClaudeTranscript } from './preview.js';
 import { parseClaudeTranscript } from './transcript.js';
 import { claudeLive } from './live.js';
 
-const PARSER_VERSION = 1;
+// 2: adds sessionBranch.
+const PARSER_VERSION = 2;
 const TRANSCRIPT_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
 
 export interface ClaudeAdapterOptions {
@@ -132,7 +133,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
 					startedAt: meta.startedAtMs !== null ? new Date(meta.startedAtMs).toISOString() : null,
 					lastActivityAt: new Date(meta.lastActivityAtMs ?? mtimeMs).toISOString(),
 					lastActivitySource: meta.lastActivityAtMs !== null ? 'transcript' : 'file-mtime',
-					userTurnCount: meta.userTurnCount
+					userTurnCount: meta.userTurnCount,
+					sessionBranch: meta.lastBranch
 				};
 				sessions.push({ session, source: { path: file.path, sizeBytes: size, mtimeMs } });
 			}

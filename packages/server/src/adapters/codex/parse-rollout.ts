@@ -1,4 +1,5 @@
 import { isValidNativeId } from '@halcyon/core';
+import { cleanName } from '../../discovery/git-info.js';
 import { readRollout } from './rollout-reader.js';
 
 /**
@@ -27,6 +28,8 @@ export interface RolloutFacts {
 	/** Newest record timestamp in the transcript. */
 	lastRecordAt: string | null;
 	userTurnCount: number;
+	/** `session_meta.git.branch`: the branch Codex recorded when the session started. */
+	branch: string | null;
 }
 
 export type RolloutParse =
@@ -161,6 +164,7 @@ export async function parseRollout(
 	let latestCwd: string | null = null;
 	let startedAt: string | null = null;
 	let userTurnCount = 0;
+	let branch: string | null = null;
 
 	const noteTimestamp = (value: unknown) => {
 		if (typeof value !== 'string') return;
@@ -196,6 +200,7 @@ export async function parseRollout(
 				}
 				if (typeof payload.cwd === 'string' && payload.cwd !== '') projectPath = payload.cwd;
 				startedAt = normalizeTimestamp(payload.timestamp) ?? normalizeTimestamp(record.timestamp);
+				branch = cleanName(asRecord(payload.git)?.branch);
 				return;
 			}
 			case 'turn_context': {
@@ -236,7 +241,8 @@ export async function parseRollout(
 			latestPath: latestCwd !== null && latestCwd !== projectPath ? latestCwd : null,
 			startedAt,
 			lastRecordAt: Number.isFinite(lastRecordMs) ? new Date(lastRecordMs).toISOString() : null,
-			userTurnCount
+			userTurnCount,
+			branch
 		}
 	};
 }

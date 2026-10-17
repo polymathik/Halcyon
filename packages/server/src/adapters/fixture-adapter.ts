@@ -1,5 +1,6 @@
 import type {
 	DiscoveredSession,
+	GitInfo,
 	NativeCommand,
 	PreviewMessage,
 	ProviderAdapter,
@@ -105,13 +106,17 @@ export function demoFixtureAdapters(): ProviderAdapter[] {
 		});
 	const byProvider: Partial<Record<ProviderId, Session[]>> = {
 		claude: [
-			{ ...s('claude', '11111111-1111-4111-8111-111111111111', 'Refactor auth middleware', 'api-server', 30, 0.05, 14), titleSource: 'custom' },
-			s('claude', '22222222-2222-4222-8222-222222222222', 'Fix flaky upload test', 'web-client', 80, 0.2, 6),
+			{
+				...s('claude', '11111111-1111-4111-8111-111111111111', 'Refactor auth middleware', 'api-server', 30, 0.05, 14),
+				titleSource: 'custom',
+				sessionBranch: 'refactor/auth-middleware'
+			},
+			{ ...s('claude', '22222222-2222-4222-8222-222222222222', 'Fix flaky upload test', 'web-client', 80, 0.2, 6), sessionBranch: 'fix/upload-retry' },
 			s('claude', '33333333-3333-4333-8333-333333333333', null, 'infra', 200, 190, null),
 			s('claude', '66666666-6666-4666-8666-666666666666', 'Offline sync for drafts', 'mobile-app', 26, 3, 22)
 		],
 		codex: [
-			s('codex', '44444444-4444-4444-8444-444444444444', 'Add pagination to search API', 'api-server', 5, 0.2, 3),
+			{ ...s('codex', '44444444-4444-4444-8444-444444444444', 'Add pagination to search API', 'api-server', 5, 0.2, 3), sessionBranch: 'main' },
 			s('codex', '55555555-5555-4555-8555-555555555555', 'Migrate CI to new runners', 'infra', 400, 380, 9)
 		],
 		cursor: [
@@ -147,4 +152,26 @@ export function demoFixtureAdapters(): ProviderAdapter[] {
 		if (check) adapter.live = check;
 	}
 	return adapters;
+}
+
+/** Invented repositories for the demo folders; `mobile-app` is deliberately not a repository. */
+export function demoGitReader(): { read(projectPath: string): Promise<GitInfo | null> } {
+	const repo = (name: string, remoteUrl: string | null, branch: string): GitInfo => ({
+		root: `/Users/demo/projects/${name}`,
+		name,
+		remoteUrl,
+		webUrl: remoteUrl ? `https://github.com/acme-demo/${name}` : null,
+		branch,
+		detached: false
+	});
+	const repos = new Map<string, GitInfo>([
+		['api-server', repo('api-server', 'git@github.com:acme-demo/api-server.git', 'main')],
+		['web-client', repo('web-client', 'https://github.com/acme-demo/web-client.git', 'fix/upload-retry')],
+		['infra', repo('infra', null, 'main')]
+	]);
+	return {
+		async read(projectPath) {
+			return repos.get(projectPath.split('/').pop() ?? '') ?? null;
+		}
+	};
 }

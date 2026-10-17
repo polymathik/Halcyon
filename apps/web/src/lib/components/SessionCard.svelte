@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Session } from '@halcyon/core';
 	import type { CardStatus } from '#lib/live.js';
+	import Icon from './Icon.svelte';
 	import LiveStatus from './LiveStatus.svelte';
-	import { displayPath, displayTitle, exactTime, plural, providerLabel, providerMonogram, relativeTime } from '#lib/format.js';
+	import { cardBranch, repoPath, displayPath, displayTitle, exactTime, plural, providerLabel, providerMonogram, relativeTime } from '#lib/format.js';
 
 	let {
 		session,
@@ -15,6 +16,7 @@
 		selected = false,
 		dragging = false,
 		compact = false,
+		detailed = false,
 		tags = [],
 		activeTags = [],
 		highlighted = false,
@@ -35,6 +37,8 @@
 		selected?: boolean;
 		dragging?: boolean;
 		compact?: boolean;
+		/** Zoomed in: show the folder from its repository, plus the branch. */
+		detailed?: boolean;
 		tags?: string[];
 		activeTags?: string[];
 		highlighted?: boolean;
@@ -72,6 +76,13 @@
 	}
 	const time = $derived(relativeTime(session.lastActivityAt, now));
 	const path = $derived(session.latestPath ?? session.projectPath);
+	const branch = $derived(detailed ? cardBranch(session) : null);
+	const branchHint = $derived.by(() => {
+		if (!branch) return '';
+		const current = session.git?.branch;
+		if (!session.sessionBranch) return `Branch ${branch} (checked out now)`;
+		return current && current !== branch ? `Session ran on ${branch} · folder is on ${current} now` : `Session ran on ${branch}`;
+	});
 	// Tags matching the active filter come first so they are never hidden behind +N.
 	const ordered = $derived([...tags.filter((t) => activeTags.includes(t)), ...tags.filter((t) => !activeTags.includes(t))]);
 </script>
@@ -116,7 +127,14 @@
 				<span class="hc-card__title" class:untitled={!named} title={`${title} · double-click to rename`}>{title}</span>
 			{/if}
 		</div>
-		<div class="hc-card__path" title={path ?? undefined}>{displayPath(path) ?? 'Unknown folder'}</div>
+		{#if detailed && (session.git || branch)}
+			<div class="hc-card__path git" title={[path, session.git?.remoteUrl].filter(Boolean).join('\n') || undefined}>
+				<span class="where">{repoPath(session) ?? 'Unknown folder'}</span>
+				{#if branch}<span class="branch" title={branchHint}><Icon name="branch" size={11} />{branch}</span>{/if}
+			</div>
+		{:else}
+			<div class="hc-card__path" title={path ?? undefined}>{displayPath(path) ?? 'Unknown folder'}</div>
+		{/if}
 		{#if compact && live}
 			<div class="hc-card__row"><LiveStatus status={live} /></div>
 		{/if}
@@ -210,6 +228,31 @@
 	.hc-card__title.untitled {
 		color: var(--ink-muted);
 		font-weight: 500;
+	}
+	/* Zoomed-in path row: repository-relative folder, then the branch, which never truncates first. */
+	.hc-card__path.git {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+	.where {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.branch {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 60%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--accent-ink);
+	}
+	.branch :global(.hc-icon) {
+		flex: none;
 	}
 	.turns {
 		font: 450 12px/16px var(--font-sans);

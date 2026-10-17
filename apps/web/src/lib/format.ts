@@ -47,6 +47,24 @@ export function displayPath(path: string | null): string | null {
 	return path.replace(/^(\/Users|\/home)\/[^/]+(?=\/|$)/, '~').replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, '~');
 }
 
+/**
+ * A session folder shown from its repository: `app/web` for `~/code/app/web`
+ * inside the `app` repo. Falls back to the `~` path outside a repository.
+ */
+export function repoPath(session: Session): string | null {
+	const path = session.latestPath ?? session.projectPath;
+	const git = session.git;
+	if (!path || !git) return displayPath(path);
+	if (path === git.root) return git.name;
+	const sep = git.root.includes('\\') ? '\\' : '/';
+	return path.startsWith(git.root + sep) ? `${git.name}${sep}${path.slice(git.root.length + 1)}` : displayPath(path);
+}
+
+/** The branch a card shows: what the session recorded, else the folder's branch now. */
+export function cardBranch(session: Session): string | null {
+	return session.sessionBranch ?? session.git?.branch ?? null;
+}
+
 /** Neutral label used when the provider has no title; never prompt text. */
 export function displayTitle(session: Session): string {
 	if (session.title) return session.title;
