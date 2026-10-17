@@ -10,6 +10,8 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/halcyon-ai"><img src="https://img.shields.io/npm/v/halcyon-ai?color=0b7285&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/halcyon-ai"><img src="https://img.shields.io/npm/dw/halcyon-ai?color=0b7285" alt="npm weekly downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache%202.0-0b7285" alt="Licence: Apache 2.0"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A522.17-0b7285" alt="Node.js 22.17 or later">
 </p>

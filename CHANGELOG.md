@@ -4,6 +4,10 @@ Notable changes to Halcyon. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+
+- The npm package's repository link points to `packages/server` inside the GitHub repository.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added
