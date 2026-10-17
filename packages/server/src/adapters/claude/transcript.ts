@@ -1,4 +1,5 @@
 import type { TitleSource } from '@halcyon/core';
+import { cleanName } from '../../discovery/git-info.js';
 import { readJsonl, type JsonlStats } from '../jsonl.js';
 
 /**
@@ -13,6 +14,8 @@ export interface ClaudeTranscriptMetadata {
 	titleSource: TitleSource | null;
 	firstCwd: string | null;
 	lastCwd: string | null;
+	/** `gitBranch` on the latest record that has one ("HEAD", a detached checkout, is ignored). */
+	lastBranch: string | null;
 	startedAtMs: number | null;
 	lastActivityAtMs: number | null;
 	userTurnCount: number;
@@ -51,6 +54,7 @@ export async function parseClaudeTranscript(
 		titleSource: null,
 		firstCwd: null,
 		lastCwd: null,
+		lastBranch: null,
 		startedAtMs: null,
 		lastActivityAtMs: null,
 		userTurnCount: 0,
@@ -64,6 +68,8 @@ export async function parseClaudeTranscript(
 	let lastCwdAt = -Infinity;
 	let untimedFirstCwd: string | null = null;
 	let untimedLastCwd: string | null = null;
+	let branchAt = -Infinity;
+	let untimedBranch: string | null = null;
 
 	const stats = await readJsonl(
 		path,
@@ -103,6 +109,12 @@ export async function parseClaudeTranscript(
 				}
 			}
 
+			const branch = record.gitBranch === 'HEAD' ? null : cleanName(record.gitBranch);
+			if (branch !== null) {
+				if (!hasTime) untimedBranch = branch;
+				else if (at >= branchAt) [meta.lastBranch, branchAt] = [branch, at];
+			}
+
 			if (record.type === 'user' && isHumanTurn(record)) meta.userTurnCount++;
 		},
 		{ accept: acceptClaudeLine, ...(signal ? { signal } : {}) }
@@ -110,6 +122,7 @@ export async function parseClaudeTranscript(
 
 	meta.firstCwd ??= untimedFirstCwd;
 	meta.lastCwd ??= untimedLastCwd;
+	meta.lastBranch ??= untimedBranch;
 	if (customTitle !== null) {
 		meta.title = customTitle;
 		meta.titleSource = 'custom';

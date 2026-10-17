@@ -12,14 +12,19 @@ const MAX_LEVELS = 8;
  * itself. Results are cached per path for the life of the process.
  */
 export class ProjectRootResolver {
-	private readonly cache = new Map<string, string>();
+	private readonly cache = new Map<string, string | null>();
 	private readonly home = homedir();
 
 	resolve(path: string | null): string | null {
 		if (!path) return null;
+		return this.repoRoot(path) ?? path;
+	}
+
+	/** The enclosing repository's root, or null when the folder is not in one. */
+	repoRoot(path: string): string | null {
 		const cached = this.cache.get(path);
 		if (cached !== undefined) return cached;
-		const root = this.find(path) ?? path;
+		const root = this.find(path);
 		this.cache.set(path, root);
 		return root;
 	}

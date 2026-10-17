@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import type { ProviderAdapter } from '@halcyon/core';
-import { demoFixtureAdapters } from './adapters/fixture-adapter.js';
+import { demoFixtureAdapters, demoGitReader } from './adapters/fixture-adapter.js';
 import { defaultAdapters } from './adapters/index.js';
 import { NativeActions } from './actions/native.js';
 import { startServer, type RunningServer } from './server.js';
@@ -84,7 +84,7 @@ async function listenWithFallback(
 				adapters,
 				...(dataDir ? { dataDir } : {}),
 				// Demo sessions have invented folders and IDs: their actions never start a process.
-				...(demo ? { actions: new NativeActions(demoLauncher) } : {})
+				...(demo ? { actions: new NativeActions(demoLauncher), git: demoGitReader() } : {})
 			});
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;

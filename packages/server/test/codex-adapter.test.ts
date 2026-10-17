@@ -82,7 +82,7 @@ class MemoryCache implements ParseCache {
 	get(path: string) {
 		return this.entries.get(path);
 	}
-	store(result: ScanResult, parserVersion = 1) {
+	store(result: ScanResult, parserVersion = createCodexAdapter({ root }).parserVersion) {
 		for (const d of result.sessions) this.entries.set(d.source.path, { ...d, parserVersion });
 	}
 }
@@ -258,6 +258,18 @@ describe('codex adapter: session fields', () => {
 			cwd: '/work/demo-project'
 		});
 		expect(adapter.resumeCommand({ ...session, nativeId: `${ID.cli}; rm -rf /` })).toBeNull();
+	});
+});
+
+describe('codex adapter: recorded branch', () => {
+	it('takes the branch from session_meta git info and tolerates its absence', async () => {
+		writeRollout(ID.cli, [meta(ID.cli, { git: { commit_hash: 'abc123', branch: 'feature/search', repository_url: 'git@example.com:o/r.git' } })]);
+		writeRollout(ID.cli2, [meta(ID.cli2, { git: { branch: 42 } })], { day: '02' });
+		writeRollout(ID.other, [meta(ID.other)], { day: '03' });
+		const { byId } = await scan();
+		expect(byId.get(ID.cli)?.sessionBranch).toBe('feature/search');
+		expect(byId.get(ID.cli2)?.sessionBranch).toBeNull();
+		expect(byId.get(ID.other)?.sessionBranch).toBeNull();
 	});
 });
 

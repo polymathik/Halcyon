@@ -19,6 +19,8 @@
 		sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M12.6 3.4l-1 1M4.4 11.6l-1 1"/>',
 		more: '<path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.4"/>',
 		refresh: '<path d="M13.2 8.5A5.2 5.2 0 1 1 11.6 4.3M13 2.5v3.3H9.7"/>',
+		branch: '<circle cx="5" cy="3.8" r="1.6"/><circle cx="5" cy="12.2" r="1.6"/><circle cx="11" cy="5.5" r="1.6"/><path d="M5 5.4v5.2M11 7.1c0 2.4-6 1.6-6 3.5"/>',
+		external: '<path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3c0 .6-.4 1-1 1h-7c-.6 0-1-.4-1-1v-7c0-.6.4-1 1-1h3"/>',
 		tag: '<path d="M2.5 2.5h5.2l5.8 5.8-5.2 5.2-5.8-5.8z"/><path d="M5.5 5.5h.01" stroke-width="2.2"/>',
 		download: '<path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2M3 13.5h10"/>',
 		upload: '<path d="M8 10.5v-8M4.8 5.7 8 2.5l3.2 3.2M3 13.5h10"/>',

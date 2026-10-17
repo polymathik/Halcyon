@@ -128,6 +128,23 @@ describe('Claude adapter: discovery', () => {
 		expect(found.source.sizeBytes).toBeGreaterThan(0);
 	});
 
+	it('records the branch of the latest record, ignoring HEAD and blank values', async () => {
+		const root = makeRoot({
+			[`p/${ID.a}.jsonl`]: jsonl(
+				user(ID.a, '2026-03-02T10:00:00.000Z', { gitBranch: 'main' }),
+				// Unordered: the latest record wins, not the last line.
+				assistant(ID.a, '2026-03-02T12:00:00.000Z', { gitBranch: 'feature/login' }),
+				user(ID.a, '2026-03-02T11:00:00.000Z', { gitBranch: 'main' }),
+				user(ID.a, '2026-03-02T13:00:00.000Z', { gitBranch: 'HEAD' }),
+				user(ID.a, '2026-03-02T14:00:00.000Z', { gitBranch: '' })
+			),
+			[`p/${ID.b}.jsonl`]: jsonl(user(ID.b, '2026-03-02T10:00:00.000Z'))
+		});
+		const result = await scan(root);
+		expect(byNative(result, ID.a).sessionBranch).toBe('feature/login');
+		expect(byNative(result, ID.b).sessionBranch).toBeNull();
+	});
+
 	it('leaves latestPath null when the working directory never changes', async () => {
 		const root = makeRoot({
 			[`p/${ID.a}.jsonl`]: jsonl(user(ID.a, '2026-01-01T00:00:00Z'), assistant(ID.a, '2026-01-01T00:01:00Z'))
@@ -238,7 +255,7 @@ describe('Claude adapter: damaged input', () => {
 });
 
 describe('Claude adapter: cache', () => {
-	function cacheFrom(result: ScanResult, parserVersion = 1): ParseCache {
+	function cacheFrom(result: ScanResult, parserVersion = createClaudeAdapter({ root: base }).parserVersion): ParseCache {
 		const map = new Map(result.sessions.map((s) => [s.source.path, { ...s, parserVersion }]));
 		return { get: (path) => map.get(path) };
 	}

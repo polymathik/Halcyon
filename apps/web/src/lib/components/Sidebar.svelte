@@ -243,6 +243,32 @@
 					<dt>Now in</dt>
 					<dd class="hc-mono scroll" title={session.latestPath}>{displayPath(session.latestPath)}</dd>
 				{/if}
+				{#if session.git}
+					<dt>Repository</dt>
+					<dd class="repo">
+						{#if session.git.webUrl}
+							<a class="link" href={session.git.webUrl} target="_blank" rel="noopener noreferrer" title={session.git.webUrl}>{session.git.name}<Icon name="external" size={11} /></a>
+						{:else}
+							{session.git.name}
+						{/if}
+					</dd>
+					{#if session.git.remoteUrl}
+						<dt>Remote</dt>
+						<dd class="hc-mono scroll" title={session.git.remoteUrl}>{session.git.remoteUrl}</dd>
+					{/if}
+					<dt>Branch</dt>
+					<dd class="hc-mono scroll" title="Checked out in the folder now">
+						{#if session.git.branch}{session.git.detached ? `detached at ${session.git.branch}` : session.git.branch}{:else}<span class="muted">Unknown</span>{/if}
+					</dd>
+					{#if session.git.root !== session.projectPath}
+						<dt>Repo folder</dt>
+						<dd class="hc-mono scroll" title={session.git.root}>{displayPath(session.git.root)}</dd>
+					{/if}
+				{/if}
+				{#if session.sessionBranch && session.sessionBranch !== session.git?.branch}
+					<dt>Session branch</dt>
+					<dd class="hc-mono scroll" title="The branch the agent recorded for this session">{session.sessionBranch}</dd>
+				{/if}
 				<dt>Session</dt>
 				<dd class="hc-mono scroll" title={session.nativeId}>{session.nativeId}</dd>
 			</dl>
@@ -409,6 +435,11 @@
 	}
 	.link:hover {
 		text-decoration: underline;
+	}
+	.repo .link {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
 	}
 	.sub-path {
 		display: block;

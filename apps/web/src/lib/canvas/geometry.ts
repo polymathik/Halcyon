@@ -24,6 +24,8 @@ export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 2.5;
 /** Below this zoom, cards switch to the compact level of detail. */
 export const COMPACT_BELOW = 0.55;
+/** At or above this zoom cards show repository and branch in place of the plain folder path. */
+export const DETAIL_FROM = 1.25;
 export const CARD_WIDTH = 248;
 /** Card height estimates (cards are content-sized): without tags ~90px, with tags ~118px. */
 export const CARD_HEIGHT = 96;

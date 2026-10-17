@@ -63,6 +63,34 @@ export interface Session {
 	 * meta records are excluded. `null` means the count is unknown, not zero.
 	 */
 	userTurnCount: number | null;
+
+	/**
+	 * The branch the provider recorded for this session (Claude Code's
+	 * `gitBranch`, Codex's `session_meta.git.branch`). Set by adapters that
+	 * store one; absent otherwise.
+	 */
+	sessionBranch?: string | null;
+	/**
+	 * The current state of the git repository enclosing `projectPath`, read
+	 * from its `.git` files by discovery (not adapters, and never persisted).
+	 * `null` when the folder is not inside a repository.
+	 */
+	git?: GitInfo | null;
+}
+
+/** A repository as it is on disk now; nothing here comes from a transcript. */
+export interface GitInfo {
+	/** Working tree root (the folder holding `.git`). */
+	root: string;
+	/** Repository name: the last segment of the remote URL, else the root folder name. */
+	name: string;
+	/** `origin` (or the first remote) with any credentials, query and fragment removed. */
+	remoteUrl: string | null;
+	/** An https page for the remote when one can be derived from its host and path. */
+	webUrl: string | null;
+	/** Checked-out branch; for a detached HEAD, the short commit hash. */
+	branch: string | null;
+	detached: boolean;
 }
 
 /**

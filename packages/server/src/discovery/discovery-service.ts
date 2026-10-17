@@ -1,4 +1,5 @@
 import type {
+	GitInfo,
 	NativeCommand,
 	PreviewMessage,
 	ProviderAdapter,
@@ -8,6 +9,7 @@ import type {
 	SessionsResponse
 } from '@halcyon/core';
 import type { SessionCacheStore } from '../db/session-cache.js';
+import { FileGitReader, type GitReader } from './git-info.js';
 import { ProjectRootResolver } from './project-root.js';
 
 const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
@@ -37,12 +39,15 @@ export class DiscoveryService {
 	private snapshotAt = 0;
 	private inflight: Promise<SessionsResponse> | null = null;
 	private readonly roots = new ProjectRootResolver();
+	private readonly git: GitReader;
 
 	constructor(
 		private readonly adapters: ProviderAdapter[],
 		private readonly cache: SessionCacheStore,
-		private readonly options: { scanTimeoutMs?: number } = {}
-	) {}
+		private readonly options: { scanTimeoutMs?: number; git?: GitReader } = {}
+	) {
+		this.git = options.git ?? new FileGitReader(this.roots);
+	}
 
 	/**
 	 * Returns the latest snapshot, scanning first if none exists yet. When the
@@ -117,13 +122,24 @@ export class DiscoveryService {
 
 	private async scanAll(): Promise<SessionsResponse> {
 		const outcomes = await Promise.all(this.adapters.map((adapter) => this.scanOne(adapter)));
-		const sessions = dedupe(outcomes.flatMap((outcome) => outcome.sessions)).map((session) => ({
-			...session,
-			projectRoot: this.roots.resolve(session.projectPath)
-		}));
+		const found = dedupe(outcomes.flatMap((outcome) => outcome.sessions));
+		const git = await this.readGit(found);
+		const sessions = found.map((session) => {
+			const repo = session.projectPath ? (git.get(session.projectPath) ?? null) : null;
+			return { ...session, projectRoot: repo?.root ?? this.roots.resolve(session.projectPath), git: repo };
+		});
 		this.snapshot = { sessions, providers: outcomes.map((outcome) => outcome.status) };
 		this.snapshotAt = Date.now();
 		return this.snapshot;
+	}
+
+	/** Git state per distinct session folder; a failure only leaves that folder without git details. */
+	private async readGit(sessions: Session[]): Promise<Map<string, GitInfo | null>> {
+		const paths = [...new Set(sessions.map((session) => session.projectPath).filter((path) => path !== null))];
+		const entries = await Promise.all(
+			paths.map(async (path) => [path, await this.git.read(path).catch(() => null)] as const)
+		);
+		return new Map(entries);
 	}
 
 	private async scanOne(adapter: ProviderAdapter): Promise<ProviderOutcome> {

@@ -4,7 +4,15 @@ Notable changes to Halcyon. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-First public release candidate.
+## [0.2.0] - 2026-10-17
+
+### Added
+
+- Git details: when a session's folder is in a git repository, the sidebar shows the repository (with a link to its web page), remote, current branch and the branch the session ran on (Claude Code and Codex CLI record it). Zoomed in past 125%, cards show the folder from the repository root and the branch. Halcyon reads `.git` files directly and strips credentials from remote URLs.
+
+## [0.1.0] - 2026-10-15
+
+First public release.
 
 ### Added
 
@@ -19,4 +27,6 @@ First public release candidate.
 - Light and dark themes; Geist and Geist Mono bundled; Horizon mark.
 - Apache License 2.0, security and privacy policies, contributing guide.
 
-[Unreleased]: https://github.com/sarupurisailalith/Halcyon/commits/main
+[Unreleased]: https://github.com/sarupurisailalith/Halcyon/compare/v0.2.0...main
+[0.2.0]: https://www.npmjs.com/package/halcyon-ai/v/0.2.0
+[0.1.0]: https://www.npmjs.com/package/halcyon-ai/v/0.1.0

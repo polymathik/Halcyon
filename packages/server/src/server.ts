@@ -10,6 +10,7 @@ import { SessionCacheStore } from './db/session-cache.js';
 import { openDatabase, type Database } from './db/sqlite.js';
 import { WorkspaceStore } from './db/workspace-store.js';
 import { DiscoveryService } from './discovery/discovery-service.js';
+import type { GitReader } from './discovery/git-info.js';
 import { createApp } from './http/app.js';
 import type { NativeActions } from './actions/native.js';
 import { LiveService } from './live/live-service.js';
@@ -26,6 +27,8 @@ export interface StartOptions {
 	probe?: ProcessProbe;
 	/** Native actions; defaults to launching real terminals. */
 	actions?: NativeActions;
+	/** Git state of session folders; defaults to reading their `.git` files. */
+	git?: GitReader;
 }
 
 export interface RunningServer {
@@ -75,7 +78,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
 		server.close();
 		throw error;
 	}
-	const discovery = new DiscoveryService(options.adapters, new SessionCacheStore(db));
+	const discovery = new DiscoveryService(
+		options.adapters,
+		new SessionCacheStore(db),
+		options.git ? { git: options.git } : {}
+	);
 	const webRoot = options.webRoot === undefined ? defaultWebRoot() : options.webRoot;
 
 	app = createApp({

@@ -10,6 +10,7 @@
 		COLLAPSED_ZONE_HEIGHT,
 		COLLAPSED_ZONE_WIDTH,
 		COMPACT_BELOW,
+		DETAIL_FROM,
 		contains,
 		fitCamera,
 		gridPitch,
@@ -169,6 +170,7 @@
 	}
 
 	const compact = $derived(cam.z < COMPACT_BELOW);
+	const detailed = $derived(cam.z >= DETAIL_FROM);
 	const lod = $derived(compact ? lodScale(cam.z).toFixed(2) : '1');
 	const pitch = $derived(gridPitch(cam.z));
 	const zoomLabel = $derived(`${Math.round(cam.z * 100)}%`);
@@ -738,6 +740,7 @@
 				y={item.y}
 				{now}
 				{compact}
+				{detailed}
 				tags={item.tags}
 				activeTags={filter?.tags ?? []}
 				highlighted={!!filter && item.match && filter.mode === 'highlight'}

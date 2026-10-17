@@ -101,6 +101,7 @@ Halcyon gives you one calm place to see the whole picture:
 **Canvas**
 - Infinite, trackpad-first canvas: two-finger scroll pans, pinch zooms toward the cursor, cards stay crisp at every zoom with a compact level of detail when zoomed out.
 - Every session is a card: agent, title, folder, live status or turn count, last activity, tags.
+- Zoom in past 125% and cards show the folder from its git repository and the branch (the one the session ran on, when the agent records it).
 - Drag cards anywhere; positions persist. Shift-click or shift-drag to select several and move them together.
 - Minimap, fit-all, keyboard navigation, light and dark themes.
 
@@ -124,7 +125,7 @@ Halcyon gives you one calm place to see the whole picture:
 </picture>
 
 **Details and actions**
-- A non-blocking sidebar with status, timestamps, turns, folder and session ID, plus a short preview of the most recent messages — read from the transcript on demand and never stored.
+- A non-blocking sidebar with status, timestamps, turns, folder, git repository (name, remote, current branch and the session's own branch) and session ID, plus a short preview of the most recent messages — read from the transcript on demand and never stored.
 - **Resume in terminal** opens a new terminal window in the session's folder and runs the agent's own resume command. **Open folder** and **Copy command** are one click away.
 - Long paths, IDs and commands scroll instead of being cut off.
 
@@ -206,7 +207,7 @@ Session transcripts can contain secrets, so Halcyon is deliberately conservative
 
 - **Local only.** The server binds to `127.0.0.1`, checks the `Host` header on every request and the `Origin` on every write (protecting against DNS rebinding and cross-site requests), and sends a strict Content-Security-Policy. No telemetry, no cloud service, no account, no API key. Fonts are bundled.
 - **Read-only on your agents.** Halcyon never writes to, moves or deletes any agent's files. SQLite stores are opened read-only. Archiving and renaming happen only in Halcyon's own database.
-- **Minimal parsing.** Only the fields a card needs (IDs, folders, timestamps, provider-stored titles, counts) are read and cached. Message text is never stored; the sidebar preview is read on request, bounded in size, and stripped of injected system context.
+- **Minimal parsing.** Only the fields a card needs (IDs, folders, timestamps, provider-stored titles, recorded branch, counts) are read and cached. Git details come from reading `.git/HEAD` and `.git/config` directly (no `git` process), with credentials stripped from remote URLs. Message text is never stored; the sidebar preview is read on request, bounded in size, and stripped of injected system context.
 - **No shell interpolation.** Native actions launch executables with argument arrays. Session IDs are validated per agent (UUIDs or safe tokens that can never start with `-`) and folders are checked before anything runs.
 - **Your data:** Halcyon's own database lives at `~/.halcyon/halcyon.db` (or `$HALCYON_HOME`). Delete the folder to reset it.
 
