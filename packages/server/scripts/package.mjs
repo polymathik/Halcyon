@@ -71,7 +71,8 @@ writeFileSync(
 			license: pkg.license,
 			author: pkg.author,
 			homepage: pkg.homepage,
-			repository: { type: 'git', url: pkg.repository.url },
+			// Keep `directory` so npm links to packages/server inside the monorepo.
+			repository: pkg.repository,
 			bugs: pkg.bugs,
 			keywords: pkg.keywords
 		},
