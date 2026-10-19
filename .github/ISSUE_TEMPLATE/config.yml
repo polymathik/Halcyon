@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/sarupurisailalith/Halcyon/security/advisories/new
+    url: https://github.com/polymathik/Halcyon/security/advisories/new
     about: Please report security problems privately, not as issues.

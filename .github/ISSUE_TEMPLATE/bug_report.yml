@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. **Please don't paste or attach session transcripts** — they can contain code, prompts and credentials. Describe what you saw instead. Security problems go through [SECURITY.md](https://github.com/sarupurisailalith/Halcyon/security/policy), not here.
+        Thanks for reporting. **Please don't paste or attach session transcripts** — they can contain code, prompts and credentials. Describe what you saw instead. Security problems go through [SECURITY.md](https://github.com/polymathik/Halcyon/security/policy), not here.
   - type: textarea
     id: what
     attributes:

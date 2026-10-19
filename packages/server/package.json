@@ -5,14 +5,14 @@
   "description": "Local-first canvas for your AI coding CLI sessions",
   "license": "Apache-2.0",
   "author": "Sailalith Sarupuri",
-  "homepage": "https://github.com/sarupurisailalith/Halcyon#readme",
+  "homepage": "https://github.com/polymathik/Halcyon#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarupurisailalith/Halcyon.git",
+    "url": "git+https://github.com/polymathik/Halcyon.git",
     "directory": "packages/server"
   },
   "bugs": {
-    "url": "https://github.com/sarupurisailalith/Halcyon/issues"
+    "url": "https://github.com/polymathik/Halcyon/issues"
   },
   "keywords": [
     "claude-code",

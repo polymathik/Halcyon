@@ -7,6 +7,7 @@ Notable changes to Halcyon. The format follows [Keep a Changelog](https://keepac
 ### Changed
 
 - The npm package's repository link points to `packages/server` inside the GitHub repository.
+- The repository moved to [github.com/polymathik/Halcyon](https://github.com/polymathik/Halcyon). Links to the old address redirect.
 
 ## [0.2.0] - 2026-10-17
 
@@ -31,6 +32,6 @@ First public release.
 - Light and dark themes; Geist and Geist Mono bundled; Horizon mark.
 - Apache License 2.0, security and privacy policies, contributing guide.
 
-[Unreleased]: https://github.com/sarupurisailalith/Halcyon/compare/v0.2.0...main
+[Unreleased]: https://github.com/polymathik/Halcyon/compare/v0.2.0...main
 [0.2.0]: https://www.npmjs.com/package/halcyon-ai/v/0.2.0
 [0.1.0]: https://www.npmjs.com/package/halcyon-ai/v/0.1.0
