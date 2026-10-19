@@ -49,7 +49,7 @@ halcyon
 Building from source also needs [pnpm](https://pnpm.io) 10.
 
 ```bash
-git clone https://github.com/sarupurisailalith/Halcyon.git
+git clone https://github.com/polymathik/Halcyon.git
 cd Halcyon
 pnpm install
 pnpm build

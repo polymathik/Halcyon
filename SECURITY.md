@@ -6,7 +6,7 @@ Halcyon reads the session files of AI coding agents on your machine, and those t
 
 Please **do not open a public issue** for a security problem.
 
-Report it privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/sarupurisailalith/Halcyon/security/advisories/new)). Include:
+Report it privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/polymathik/Halcyon/security/advisories/new)). Include:
 
 - the Halcyon version or commit, your OS and Node.js version;
 - what an attacker can do, and what they need first (a malicious web page you visit, a crafted session file, local access, and so on);
