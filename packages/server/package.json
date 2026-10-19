@@ -1,6 +1,6 @@
 {
   "name": "halcyon-ai",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Local-first canvas for your AI coding CLI sessions",
   "license": "Apache-2.0",
